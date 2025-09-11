@@ -1,4 +1,5 @@
 import { parseDateString } from "@/lib/utils";
+import { applySpendCorrection } from "./orangellowSpendCorrection";
 
 export interface DailyForecastData {
   date: string;
@@ -70,11 +71,14 @@ export function calculateMTDMetrics(
     return rowAgencyType === agencyType;
   });
   
-  // Group by date and sum metrics
+  // Group by date and sum metrics (apply spend corrections during aggregation)
   const dailyData: Record<string, { impressions: number; spend: number; date: string }> = {};
   
   filteredData.forEach(row => {
-    const dateKey = row.DATE;
+    // Apply spend correction to each row before aggregating
+    const correctedRow = applySpendCorrection(row);
+    
+    const dateKey = correctedRow.DATE;
     if (!dailyData[dateKey]) {
       dailyData[dateKey] = {
         date: dateKey,
@@ -83,8 +87,8 @@ export function calculateMTDMetrics(
       };
     }
     
-    dailyData[dateKey].impressions += Number(row.IMPRESSIONS) || 0;
-    dailyData[dateKey].spend += Number(row.SPEND) || 0;
+    dailyData[dateKey].impressions += Number(correctedRow.IMPRESSIONS) || 0;
+    dailyData[dateKey].spend += Number(correctedRow.SPEND) || 0;
   });
   
   const dailyDataArray = Object.values(dailyData).sort((a, b) => {

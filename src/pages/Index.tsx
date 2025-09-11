@@ -29,6 +29,7 @@ import EnhancedPdfExportButton from "@/components/ui/enhanced-pdf-export-button"
 import CustomReportBuilder from "@/components/CustomReportBuilder";
 import StatusTab from "@/components/StatusTab";
 import ForecastTab from "@/components/ForecastTab";
+import { applySpendCorrections, getSpendCorrectionSummary } from "@/utils/orangellowSpendCorrection";
 
 type MetricType = 
   | "impressions" 
@@ -754,21 +755,31 @@ const Index = () => {
         return newRow;
       });
       
-      setData(processedData);
+      // Apply Orangellow spend corrections (SM and OG campaigns using $7 CPM)
+      const correctedData = applySpendCorrections(processedData);
       
-      const dates = processedData.map(row => row.DATE).filter(date => date && date !== 'Totals').sort();
+      // Log spend correction summary
+      const correctionSummary = getSpendCorrectionSummary(correctedData);
+      if (correctionSummary.correctedRows > 0) {
+        console.log(`Orangellow spend corrections applied:`, correctionSummary);
+        toast.success(`Applied spend corrections to ${correctionSummary.correctedRows} Orangellow campaigns using $7 CPM`);
+      }
+      
+      setData(correctedData);
+      
+      const dates = correctedData.map(row => row.DATE).filter(date => date && date !== 'Totals').sort();
       if (dates.length > 0) {
         console.log(`Data date range: ${dates[0]} to ${dates[dates.length-1]}`);
         console.log(`Total unique dates: ${new Set(dates).size}`);
         
         const dateCounts: Record<string, number> = {};
-        processedData.forEach(row => {
+        correctedData.forEach(row => {
           dateCounts[row.DATE] = (dateCounts[row.DATE] || 0) + 1;
         });
         console.log("Rows per date:", dateCounts);
       }
       
-      toast.success(`Successfully loaded ${processedData.length} rows of data`);
+      toast.success(`Successfully loaded ${correctedData.length} rows of data`);
     } catch (error) {
       console.error("Error processing uploaded data:", error);
       toast.error("Failed to process the uploaded data");
