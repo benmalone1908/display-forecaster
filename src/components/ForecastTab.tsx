@@ -28,17 +28,10 @@ const ForecastTab = ({ data }: ForecastTabProps) => {
   const [sortBy, setSortBy] = useState<'name' | 'change' | 'changeDollar'>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
-  // Calculate current date based on most recent data
+  // Use today's date instead of most recent data date to avoid filtering issues
   const currentDate = useMemo(() => {
-    const dates = data
-      .map(row => row.DATE)
-      .filter(date => date && date !== 'Totals')
-      .map(dateStr => parseDateString(dateStr))
-      .filter(date => date !== null)
-      .sort((a, b) => b.getTime() - a.getTime());
-    
-    return dates.length > 0 ? dates[0] : new Date();
-  }, [data]);
+    return new Date(); // Always use today's date
+  }, []);
 
   // Generate forecast data
   const forecastData = useMemo(() => {

@@ -30,6 +30,7 @@ import CustomReportBuilder from "@/components/CustomReportBuilder";
 import StatusTab from "@/components/StatusTab";
 import ForecastTab from "@/components/ForecastTab";
 import { applySpendCorrections, getSpendCorrectionSummary } from "@/utils/orangellowSpendCorrection";
+import { saveCampaignData, loadAllCampaignData, hasAnyData } from "@/utils/dataStorage";
 
 type MetricType = 
   | "impressions" 
@@ -520,12 +521,16 @@ const ForecastContent = ({
   data, 
   dateRange, 
   onDateRangeChange,
-  onReset
+  onReset,
+  onDataLoaded,
+  onProcessFiles
 }: { 
   data: any[]; 
   dateRange: DateRange | undefined; 
   onDateRangeChange: (range: DateRange | undefined) => void;
   onReset: () => void;
+  onDataLoaded: (data: any[]) => void;
+  onProcessFiles: (uploadedData: any[], pacingData?: any[], contractTermsData?: any[]) => void;
 }) => {
   // Calculate available date range from data to constrain date picker
   const availableDateRange = useMemo(() => {
@@ -639,7 +644,59 @@ const ForecastContent = ({
 const Index = () => {
   const [data, setData] = useState<any[]>([]);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
-  const [showDashboard, setShowDashboard] = useState(false);
+  const [showDashboard, setShowDashboard] = useState(true); // Start with dashboard view to avoid flash
+
+  // Auto-load data when component mounts
+  useEffect(() => {
+    const loadExistingData = async () => {
+      try {
+        console.log('🔍 Checking for existing data in database...');
+        const hasData = await hasAnyData();
+        console.log(`🔍 Has data check result: ${hasData}`);
+        
+        if (hasData) {
+          console.log('📥 Found existing data, loading from database...');
+          const result = await loadAllCampaignData();
+          
+          if (result.success && result.data.length > 0) {
+            console.log(`✅ Auto-loaded ${result.data.length} rows from database`);
+            setData(result.data);
+            setShowDashboard(true); // Automatically show forecast since we have data
+            
+            // Set default date range to start from 1st of previous month
+            const today = new Date();
+            const firstOfPreviousMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            const endOfCurrentMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            
+            setDateRange({
+              from: firstOfPreviousMonth,
+              to: endOfCurrentMonth
+            });
+            
+            toast.success(`Loaded ${result.data.length} campaign records from database`);
+          } else {
+            console.log(`❌ Failed to load data: ${result.message}`);
+          }
+        } else {
+          console.log('ℹ️ No existing data found in database');
+          setShowDashboard(false); // Switch to upload interface only if no data exists
+        }
+      } catch (error) {
+        console.log('ℹ️ Database auto-load not available:', error);
+        setShowDashboard(false); // Switch to upload interface if database not available
+        // Fail silently - this is an enhancement, not a requirement
+      }
+    };
+
+    loadExistingData();
+  }, []); // Run once on component mount
+
+  // Auto-show dashboard when data exists
+  useEffect(() => {
+    if (data.length > 0) {
+      setShowDashboard(true);
+    }
+  }, [data.length]);
 
   useEffect(() => {
     if (data.length > 0) {
@@ -765,7 +822,32 @@ const Index = () => {
         toast.success(`Applied spend corrections to ${correctionSummary.correctedRows} Orangellow campaigns using $7 CPM`);
       }
       
+      // Save data to Supabase database (non-blocking)
+      console.log(`💾 Attempting to save ${correctedData.length} rows to database...`);
+      saveCampaignData(correctedData).then(result => {
+        if (result.success) {
+          console.log(`✅ Database save: ${result.message}`);
+          toast.success(`💾 Saved ${result.savedCount || correctedData.length} records to database`);
+        } else {
+          console.warn(`⚠️ Database save failed: ${result.message}`);
+          toast.error(`Database save failed: ${result.message}`);
+        }
+      }).catch(error => {
+        console.error(`❌ Database save error:`, error);
+        toast.error(`Database save error: ${error.message}`);
+      });
+      
       setData(correctedData);
+      
+      // Set default date range to start from 1st of previous month
+      const today = new Date();
+      const firstOfPreviousMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const endOfCurrentMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      
+      setDateRange({
+        from: firstOfPreviousMonth,
+        to: endOfCurrentMonth
+      });
       
       const dates = correctedData.map(row => row.DATE).filter(date => date && date !== 'Totals').sort();
       if (dates.length > 0) {
@@ -804,7 +886,7 @@ const Index = () => {
   return (
     <CampaignFilterProvider>
       <div className="container py-8">
-        {!showDashboard ? (
+        {!showDashboard && data.length === 0 ? (
           <>
             <div className="space-y-2 text-center animate-fade-in">
               <h1 className="text-3xl font-bold tracking-tighter sm:text-4xl">
@@ -830,6 +912,8 @@ const Index = () => {
             dateRange={dateRange} 
             onDateRangeChange={setDateRange}
             onReset={handleReset}
+            onDataLoaded={handleDataLoaded}
+            onProcessFiles={handleProcessFiles}
           />
         )}
       </div>
