@@ -525,7 +525,8 @@ const ForecastContent = ({
   onDateRangeChange,
   onUploadClick,
   onDataLoaded,
-  onProcessFiles
+  onProcessFiles,
+  logout
 }: { 
   data: any[]; 
   dateRange: DateRange | undefined; 
@@ -533,6 +534,7 @@ const ForecastContent = ({
   onUploadClick: () => void;
   onDataLoaded: (data: any[]) => void;
   onProcessFiles: (uploadedData: any[], pacingData?: any[], contractTermsData?: any[]) => void;
+  logout: () => void;
 }) => {
   // Calculate available date range from data to constrain date picker
   const availableDateRange = useMemo(() => {
@@ -936,6 +938,7 @@ const Index = () => {
             onUploadClick={handleUploadClick}
             onDataLoaded={handleDataLoaded}
             onProcessFiles={handleProcessFiles}
+            logout={logout}
           />
         )}
         
