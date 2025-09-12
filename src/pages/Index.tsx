@@ -6,7 +6,7 @@ import DateRangePicker from "@/components/DateRangePicker";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CampaignSparkCharts from "@/components/CampaignSparkCharts";
-import { LayoutDashboard, ChartLine, FileText, Target, Plus, Activity, FileDown, Clock, TrendingUp } from "lucide-react";
+import { LayoutDashboard, ChartLine, FileText, Target, Plus, Activity, FileDown, Clock, TrendingUp, LogOut } from "lucide-react";
 import DashboardWrapper from "@/components/DashboardWrapper";
 import { setToStartOfDay, setToEndOfDay, logDateDetails, normalizeDate, parseDateString } from "@/lib/utils";
 import { CampaignFilterProvider, useCampaignFilter, AGENCY_MAPPING } from "@/contexts/CampaignFilterContext";
@@ -32,6 +32,7 @@ import StatusTab from "@/components/StatusTab";
 import ForecastTab from "@/components/ForecastTab";
 import { applySpendCorrections, getSpendCorrectionSummary } from "@/utils/orangellowSpendCorrection";
 import { saveCampaignData, loadAllCampaignData, hasAnyData } from "@/utils/dataStorage";
+import { useAuth } from "@/contexts/AuthContext";
 
 type MetricType = 
   | "impressions" 
@@ -630,6 +631,15 @@ const ForecastContent = ({
               <Plus className="h-4 w-4" />
               Upload New File
             </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={logout}
+              className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
+            >
+              <LogOut className="h-4 w-4" />
+              Sign Out
+            </Button>
           </div>
         </div>
       </div>
@@ -665,6 +675,8 @@ const Index = () => {
   const [showDashboard, setShowDashboard] = useState(true); // Start with dashboard view to avoid flash
   const [isLoadingData, setIsLoadingData] = useState(true); // Loading state for database data
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false); // Modal state
+  
+  const { logout } = useAuth();
 
   // Auto-load data when component mounts
   useEffect(() => {
