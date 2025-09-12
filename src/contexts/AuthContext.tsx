@@ -54,17 +54,32 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   const login = (username: string, password: string): boolean => {
-    const correctUsername = import.meta.env.VITE_AUTH_USERNAME;
-    const correctPassword = import.meta.env.VITE_AUTH_PASSWORD;
+    // Try build-time env vars first, then fallback to runtime window vars
+    const correctUsername = import.meta.env.VITE_AUTH_USERNAME || (window as any).__AUTH_USERNAME__ || 'admin';
+    const correctPassword = import.meta.env.VITE_AUTH_PASSWORD || (window as any).__AUTH_PASSWORD__ || 'forecast2025';
 
-    if (!correctUsername || !correctPassword) {
-      console.warn('Authentication credentials not configured');
-      return false;
-    }
+    console.log('Authentication attempt:', {
+      hasUsername: !!correctUsername,
+      hasPassword: !!correctPassword,
+      usernameLength: correctUsername?.length || 0,
+      passwordLength: correctPassword?.length || 0,
+      mode: import.meta.env.MODE,
+      buildTimeUsername: !!import.meta.env.VITE_AUTH_USERNAME,
+      buildTimePassword: !!import.meta.env.VITE_AUTH_PASSWORD
+    });
 
     // Simple credential check
     const isValidUsername = username.trim().toLowerCase() === correctUsername.toLowerCase();
     const isValidPassword = password === correctPassword;
+
+    console.log('Credential validation:', {
+      usernameMatch: isValidUsername,
+      passwordMatch: isValidPassword,
+      expectedUsernameLength: correctUsername.length,
+      providedUsernameLength: username.length,
+      expectedPasswordLength: correctPassword.length,
+      providedPasswordLength: password.length
+    });
 
     if (isValidUsername && isValidPassword) {
       // Store authentication state with timestamp
