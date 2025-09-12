@@ -645,6 +645,7 @@ const Index = () => {
   const [data, setData] = useState<any[]>([]);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [showDashboard, setShowDashboard] = useState(true); // Start with dashboard view to avoid flash
+  const [isLoadingData, setIsLoadingData] = useState(true); // Loading state for database data
 
   // Auto-load data when component mounts
   useEffect(() => {
@@ -685,6 +686,8 @@ const Index = () => {
         console.log('ℹ️ Database auto-load not available:', error);
         setShowDashboard(false); // Switch to upload interface if database not available
         // Fail silently - this is an enhancement, not a requirement
+      } finally {
+        setIsLoadingData(false); // Always stop loading state
       }
     };
 
@@ -906,6 +909,16 @@ const Index = () => {
               />
             </div>
           </>
+        ) : isLoadingData ? (
+          <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
+            <div className="text-center space-y-4">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+              <div className="space-y-2">
+                <h2 className="text-xl font-semibold text-gray-900">Loading Campaign Data</h2>
+                <p className="text-gray-600">Fetching data from database...</p>
+              </div>
+            </div>
+          </div>
         ) : (
           <ForecastContent 
             data={data} 
