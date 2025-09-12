@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { DateRange } from "react-day-picker";
 import FileUpload from "@/components/FileUpload";
+import UploadModal from "@/components/UploadModal";
 import DateRangePicker from "@/components/DateRangePicker";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -521,14 +522,14 @@ const ForecastContent = ({
   data, 
   dateRange, 
   onDateRangeChange,
-  onReset,
+  onUploadClick,
   onDataLoaded,
   onProcessFiles
 }: { 
   data: any[]; 
   dateRange: DateRange | undefined; 
   onDateRangeChange: (range: DateRange | undefined) => void;
-  onReset: () => void;
+  onUploadClick: () => void;
   onDataLoaded: (data: any[]) => void;
   onProcessFiles: (uploadedData: any[], pacingData?: any[], contractTermsData?: any[]) => void;
 }) => {
@@ -623,10 +624,10 @@ const ForecastContent = ({
             <Button
               variant="outline"
               size="sm"
-              onClick={onReset}
+              onClick={onUploadClick}
               className="flex items-center gap-2"
             >
-              <X className="h-4 w-4" />
+              <Plus className="h-4 w-4" />
               Upload New File
             </Button>
           </div>
@@ -635,7 +636,24 @@ const ForecastContent = ({
       
       {/* Direct forecast display - no tabs */}
       <div className="mt-6 animate-fade-in" id="forecast-section">
-        <ForecastTab data={filteredData} />
+        {data.length === 0 ? (
+          <div className="text-center py-12 space-y-4">
+            <div className="text-6xl text-gray-200">📊</div>
+            <h3 className="text-xl font-semibold text-gray-900">No Campaign Data</h3>
+            <p className="text-gray-600 max-w-md mx-auto">
+              Upload your campaign data to generate forecasts and trend analysis.
+            </p>
+            <Button
+              onClick={onUploadClick}
+              className="mt-4"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Upload Campaign Data
+            </Button>
+          </div>
+        ) : (
+          <ForecastTab data={filteredData} />
+        )}
       </div>
     </>
   );
@@ -646,6 +664,7 @@ const Index = () => {
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [showDashboard, setShowDashboard] = useState(true); // Start with dashboard view to avoid flash
   const [isLoadingData, setIsLoadingData] = useState(true); // Loading state for database data
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false); // Modal state
 
   // Auto-load data when component mounts
   useEffect(() => {
@@ -680,11 +699,11 @@ const Index = () => {
           }
         } else {
           console.log('ℹ️ No existing data found in database');
-          setShowDashboard(false); // Switch to upload interface only if no data exists
+          // Keep dashboard view - user can upload via modal
         }
       } catch (error) {
         console.log('ℹ️ Database auto-load not available:', error);
-        setShowDashboard(false); // Switch to upload interface if database not available
+        // Keep dashboard view - user can upload via modal
         // Fail silently - this is an enhancement, not a requirement
       } finally {
         setIsLoadingData(false); // Always stop loading state
@@ -880,36 +899,14 @@ const Index = () => {
     setShowDashboard(true);
   };
 
-  const handleReset = () => {
-    setData([]);
-    setDateRange(undefined);
-    setShowDashboard(false);
+  const handleUploadClick = () => {
+    setIsUploadModalOpen(true);
   };
 
   return (
     <CampaignFilterProvider>
       <div className="container py-8">
-        {!showDashboard && data.length === 0 ? (
-          <>
-            <div className="space-y-2 text-center animate-fade-in">
-              <h1 className="text-3xl font-bold tracking-tighter sm:text-4xl">
-                Display Forecaster
-              </h1>
-              <p className="text-muted-foreground">
-                Upload your campaign data to generate forecasts and trend analysis
-              </p>
-            </div>
-
-            <div className="max-w-4xl mx-auto">
-              <FileUpload 
-                onDataLoaded={handleDataLoaded} 
-                onPacingDataLoaded={() => {}} 
-                onContractTermsLoaded={() => {}}
-                onProcessFiles={handleProcessFiles}
-              />
-            </div>
-          </>
-        ) : isLoadingData ? (
+        {isLoadingData ? (
           <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
             <div className="text-center space-y-4">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
@@ -924,11 +921,19 @@ const Index = () => {
             data={data} 
             dateRange={dateRange} 
             onDateRangeChange={setDateRange}
-            onReset={handleReset}
+            onUploadClick={handleUploadClick}
             onDataLoaded={handleDataLoaded}
             onProcessFiles={handleProcessFiles}
           />
         )}
+        
+        {/* Upload Modal */}
+        <UploadModal
+          isOpen={isUploadModalOpen}
+          onClose={() => setIsUploadModalOpen(false)}
+          onDataLoaded={handleDataLoaded}
+          onProcessFiles={handleProcessFiles}
+        />
       </div>
     </CampaignFilterProvider>
   );
