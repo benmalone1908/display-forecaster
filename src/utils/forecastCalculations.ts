@@ -190,10 +190,19 @@ export function generateDailyBreakdown(
   const directDailyMap = new Map(directMTD.dailyData.map(d => [d.date, d]));
   const channelDailyMap = new Map(channelMTD.dailyData.map(d => [d.date, d]));
   
+  // Find the last date with actual data
+  const allDataDates = [...directMTD.dailyData, ...channelMTD.dailyData]
+    .map(d => parseDateString(d.date))
+    .filter(Boolean)
+    .sort((a, b) => b!.getTime() - a!.getTime());
+  
+  const lastDataDate = allDataDates.length > 0 ? allDataDates[0] : currentDate;
+  
   // Generate daily breakdown for entire month
   allDatesInMonth.forEach(date => {
     const dateStr = `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
-    const isProjection = date > currentDate;
+    // Use last date with actual data instead of currentDate for projection determination
+    const isProjection = date > lastDataDate!;
     
     // Calculate forecast shifted by one day - each row shows the forecast as of the NEXT day
     // This means: Day 1 shows Day 2's forecast, Day 2 shows Day 3's forecast, etc.
@@ -205,9 +214,10 @@ export function generateDailyBreakdown(
     let directDailyForecast, channelDailyForecast;
     
     if (isProjection) {
-      // For future dates, use current forecast
-      directDailyForecast = directForecast;
-      channelDailyForecast = channelForecast;
+      // For future dates (beyond last data date), use forecast as of the last data date
+      // This ensures consistency - all future dates show the same forecast as the last data day
+      directDailyForecast = calculateForecastAsOfDate(directMTD.dailyData, lastDataDate!, currentMonth, currentYear);
+      channelDailyForecast = calculateForecastAsOfDate(channelMTD.dailyData, lastDataDate!, currentMonth, currentYear);
     } else {
       // For current and past dates, show forecast as of the end of that day
       directDailyForecast = calculateForecastAsOfDate(directMTD.dailyData, date, currentMonth, currentYear);

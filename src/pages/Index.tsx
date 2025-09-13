@@ -858,22 +858,36 @@ const Index = () => {
         toast.success(`Applied spend corrections to ${correctionSummary.correctedRows} Orangellow campaigns using $7 CPM`);
       }
       
-      // Save data to Supabase database (non-blocking)
+      // Save data to Supabase database and reload complete dataset
       console.log(`💾 Attempting to save ${correctedData.length} rows to database...`);
-      saveCampaignData(correctedData).then(result => {
+      saveCampaignData(correctedData).then(async (result) => {
         if (result.success) {
           console.log(`✅ Database save: ${result.message}`);
           toast.success(`💾 Saved ${result.savedCount || correctedData.length} records to database`);
+          
+          // Reload ALL data from database to get complete dataset
+          console.log('🔄 Reloading complete dataset from database...');
+          const reloadResult = await loadAllCampaignData();
+          if (reloadResult.success && reloadResult.data.length > 0) {
+            console.log(`📥 Reloaded ${reloadResult.data.length} total records from database`);
+            setData(reloadResult.data);
+            toast.success(`🔄 Dataset updated: now showing ${reloadResult.data.length} total records`);
+          } else {
+            console.warn('⚠️ Could not reload data from database, using uploaded data only');
+            setData(correctedData);
+          }
         } else {
           console.warn(`⚠️ Database save failed: ${result.message}`);
           toast.error(`Database save failed: ${result.message}`);
+          // Still use the uploaded data if database save failed
+          setData(correctedData);
         }
       }).catch(error => {
         console.error(`❌ Database save error:`, error);
         toast.error(`Database save error: ${error.message}`);
+        // Still use the uploaded data if database save failed
+        setData(correctedData);
       });
-      
-      setData(correctedData);
       
       // Set default date range to start from 1st of previous month
       const today = new Date();
@@ -916,6 +930,7 @@ const Index = () => {
   const handleUploadClick = () => {
     setIsUploadModalOpen(true);
   };
+
 
   return (
     <CampaignFilterProvider>
