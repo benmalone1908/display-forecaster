@@ -858,6 +858,11 @@ const Index = () => {
         toast.success(`Applied spend corrections to ${correctionSummary.correctedRows} Orangellow campaigns using $7 CPM`);
       }
       
+      // IMMEDIATE UPDATE: Always update UI first, then handle database save
+      console.log(`📊 Immediately updating UI with ${correctedData.length} rows...`);
+      setData(correctedData);
+      toast.success(`📊 Loaded ${correctedData.length} campaign records`);
+      
       // Save data to Supabase database and reload complete dataset
       console.log(`💾 Attempting to save ${correctedData.length} rows to database...`);
       saveCampaignData(correctedData).then(async (result) => {
@@ -873,20 +878,18 @@ const Index = () => {
             setData(reloadResult.data);
             toast.success(`🔄 Dataset updated: now showing ${reloadResult.data.length} total records`);
           } else {
-            console.warn('⚠️ Could not reload data from database, using uploaded data only');
-            setData(correctedData);
+            console.warn('⚠️ Could not reload data from database, keeping uploaded data');
+            // Keep the uploaded data that's already displayed
           }
         } else {
           console.warn(`⚠️ Database save failed: ${result.message}`);
           toast.error(`Database save failed: ${result.message}`);
-          // Still use the uploaded data if database save failed
-          setData(correctedData);
+          // Keep the uploaded data that's already displayed
         }
       }).catch(error => {
         console.error(`❌ Database save error:`, error);
         toast.error(`Database save error: ${error.message}`);
-        // Still use the uploaded data if database save failed
-        setData(correctedData);
+        // Keep the uploaded data that's already displayed
       });
       
       // Set default date range to start from 1st of previous month
