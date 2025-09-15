@@ -38,7 +38,7 @@ export const calculateCorrectedSpend = (impressions: number, originalSpend: numb
   // Calculate spend using $7 CPM: (impressions / 1000) * $7
   const correctedSpend = (impressions / 1000) * ORANGELLOW_CPM;
   
-  console.log(`Orangellow spend correction for "${campaignName}": ${originalSpend} → ${correctedSpend.toFixed(2)} (${impressions.toLocaleString()} impressions @ $${ORANGELLOW_CPM} CPM)`);
+  // Spend corrected silently
   
   return correctedSpend;
 };
@@ -83,9 +83,7 @@ export const applySpendCorrections = (data: any[]): any[] => {
     return correctedRow;
   });
   
-  if (correctedCount > 0) {
-    console.log(`Applied Orangellow spend corrections to ${correctedCount} rows out of ${data.length} total rows`);
-  }
+  // Corrections applied silently
   
   return correctedData;
 };

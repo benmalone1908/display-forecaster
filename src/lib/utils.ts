@@ -56,7 +56,7 @@ export function parseDateString(dateStr: string): Date | null {
       // Handle 2-digit years - assume 2000s
       if (year < 100) {
         year += 2000;
-        console.log(`Converted 2-digit year ${parts[2]} to ${year}`);
+        // Year converted silently
       }
       
       if (month < 1 || month > 12) {

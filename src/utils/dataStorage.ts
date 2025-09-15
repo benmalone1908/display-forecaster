@@ -102,44 +102,19 @@ export const saveCampaignData = async (
 
     console.log(`💾 Upserting ${dbRows.length} rows to Supabase...`)
 
-    // TRUE UPSERT: Delete existing records for the same date/campaign combinations first
-    const uniqueKeys = [...new Set(dbRows.map(row => `${row.date}::${row.campaign_order_name}`))]
-    console.log(`🗑️ First, deleting existing records for ${uniqueKeys.length} unique date/campaign combinations...`)
-
+    // FAST CLEAR: Just delete all existing data and insert fresh data
+    console.log(`🗑️ Clearing all existing campaign data for fresh upload...`)
+    
     let actualDeletedCount = 0
-    for (const key of uniqueKeys) {
-      const [date, campaignName] = key.split('::', 2) // Limit split to avoid issues with :: in campaign names
-      
-      // First check if records exist
-      const { data: existingRecords, error: selectError } = await supabase
-        .from('campaign_data')
-        .select('id')
-        .eq('date', date)
-        .eq('campaign_order_name', campaignName)
-      
-      if (selectError) {
-        console.warn(`⚠️ Could not check for existing records for ${date}/${campaignName}:`, selectError.message)
-        continue
-      }
-      
-      const existingCount = existingRecords?.length || 0
-      console.log(`🔍 Found ${existingCount} existing records for ${date}/${campaignName}`)
-      
-      if (existingCount > 0) {
-        // Delete the existing records
-        const { error: deleteError } = await supabase
-          .from('campaign_data')
-          .delete()
-          .eq('date', date)
-          .eq('campaign_order_name', campaignName)
-        
-        if (deleteError) {
-          console.warn(`⚠️ Could not delete existing records for ${date}/${campaignName}:`, deleteError.message)
-        } else {
-          actualDeletedCount += existingCount
-          console.log(`🗑️ Deleted ${existingCount} existing records for ${date}/${campaignName}`)
-        }
-      }
+    const { error: clearError } = await supabase
+      .from('campaign_data')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000') // Delete all rows
+
+    if (clearError) {
+      console.warn(`⚠️ Could not clear existing data:`, clearError.message)
+    } else {
+      console.log(`🗑️ Successfully cleared all existing campaign data`)
     }
     
     console.log(`🗑️ Total deleted: ${actualDeletedCount} existing records to make room for fresh data`)
@@ -443,6 +418,7 @@ export const clearOldData = async (daysToKeep: number = 90): Promise<{ success: 
   }
 }
 
+
 // Fix duplicate records by keeping only the most recent upload for each date/campaign combination
 export const fixDuplicateRecords = async (): Promise<{ success: boolean; message: string; removedCount?: number }> => {
   try {
@@ -475,7 +451,6 @@ export const fixDuplicateRecords = async (): Promise<{ success: boolean; message
       } else {
         // Duplicate - mark for deletion
         duplicatesToDelete.push(record.id)
-        console.log(`🗑️ Marking duplicate for deletion: ${record.date}/${record.campaign_order_name} (${record.uploaded_at})`)
       }
     }
 
@@ -502,7 +477,7 @@ export const fixDuplicateRecords = async (): Promise<{ success: boolean; message
       }
       
       removedCount += batch.length
-      console.log(`🗑️ Deleted batch ${Math.floor(i/batchSize) + 1}: ${batch.length} duplicate records`)
+      // Batch deleted silently
     }
 
     console.log(`✅ Successfully removed ${removedCount} duplicate records`)
