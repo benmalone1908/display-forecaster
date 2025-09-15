@@ -152,6 +152,15 @@ export const saveCampaignData = async (
 
     console.log(`💾 Upserting ${dbRows.length} rows to Supabase...`)
 
+    // Debug: Log sample of data being sent
+    if (dbRows.length > 0) {
+      console.log('🔍 Sample data being sent to Supabase:', {
+        firstRow: dbRows[0],
+        totalRows: dbRows.length,
+        sampleKeys: Object.keys(dbRows[0])
+      })
+    }
+
     // FAST CLEAR: Just delete all existing data and insert fresh data
     console.log(`🗑️ Clearing all existing campaign data for fresh upload...`)
     
@@ -173,26 +182,58 @@ export const saveCampaignData = async (
     let successCount = 0
     const errors = []
     
-    // Insert rows in smaller batches
-    const batchSize = 100
+    // Insert rows in smaller batches with additional validation
+    const batchSize = 50 // Smaller batches to isolate issues
     for (let i = 0; i < dbRows.length; i += batchSize) {
       const batch = dbRows.slice(i, i + batchSize)
       const batchNum = Math.floor(i/batchSize) + 1
-      
+
       console.log(`💾 Inserting batch ${batchNum}/${Math.ceil(dbRows.length/batchSize)}: rows ${i+1}-${Math.min(i+batchSize, dbRows.length)}`)
-      
-      const { data: batchData, error: batchError } = await supabase
-        .from('campaign_data')
-        .insert(batch)
-        .select('id')
-      
-      if (batchError) {
-        console.error(`❌ Batch ${batchNum} error:`, batchError)
-        errors.push(batchError)
-      } else {
-        const batchCount = batchData?.length || 0
-        successCount += batchCount
-        console.log(`✅ Batch ${batchNum} inserted ${batchCount} rows successfully`)
+
+      // Final validation: ensure all batch data is JSON-serializable and clean
+      try {
+        const sanitizedBatch = batch.map((row, idx) => {
+          // Deep clone and validate each field
+          const cleanRow = {
+            date: String(row.date).slice(0, 20), // Limit date length
+            campaign_order_name: String(row.campaign_order_name).slice(0, 500), // Limit campaign name length
+            impressions: Number(row.impressions) || 0,
+            clicks: Number(row.clicks) || 0,
+            revenue: Number(row.revenue) || 0,
+            spend: Number(row.spend) || 0,
+            transactions: row.transactions ? Number(row.transactions) : null,
+            ctr: row.ctr ? Number(row.ctr) : null,
+            cpm: row.cpm ? Number(row.cpm) : null,
+            cpc: row.cpc ? Number(row.cpc) : null,
+            roas: row.roas ? Number(row.roas) : null,
+            data_source: 'csv_upload', // Hardcode to avoid any issues
+            user_session_id: `session_${Date.now()}`, // Simplified session ID
+            uploaded_at: new Date().toISOString(), // Fresh timestamp
+            orangellow_corrected: Boolean(row.orangellow_corrected),
+            original_spend: row.original_spend ? Number(row.original_spend) : null
+          }
+
+          // Ensure JSON serialization works
+          JSON.stringify(cleanRow)
+          return cleanRow
+        })
+
+        const { data: batchData, error: batchError } = await supabase
+          .from('campaign_data')
+          .insert(sanitizedBatch)
+          .select('id')
+
+        if (batchError) {
+          console.error(`❌ Batch ${batchNum} error:`, batchError)
+          errors.push(batchError)
+        } else {
+          const batchCount = batchData?.length || 0
+          successCount += batchCount
+          console.log(`✅ Batch ${batchNum} inserted ${batchCount} rows successfully`)
+        }
+      } catch (validationError) {
+        console.error(`❌ Batch ${batchNum} validation failed:`, validationError)
+        errors.push({ message: `Batch validation failed: ${validationError}` })
       }
     }
     
