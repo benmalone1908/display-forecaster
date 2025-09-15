@@ -1,15 +1,45 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '../types/database'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+// Sanitize environment variables to prevent header issues
+const sanitizeEnvVar = (value: string | undefined): string | undefined => {
+  if (!value) return value
+
+  return String(value)
+    .replace(/\u0000/g, '') // Remove null bytes
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove control characters
+    .replace(/[^\x20-\x7E]/g, '') // Keep only printable ASCII characters
+    .trim()
+}
+
+const rawSupabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const rawSupabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+const supabaseUrl = sanitizeEnvVar(rawSupabaseUrl)
+const supabaseKey = sanitizeEnvVar(rawSupabaseKey)
+
+// Debug environment variables (without exposing full keys)
+console.log('🔍 Supabase environment check:', {
+  urlExists: !!rawSupabaseUrl,
+  urlLength: rawSupabaseUrl?.length || 0,
+  urlSanitized: rawSupabaseUrl !== supabaseUrl,
+  keyExists: !!rawSupabaseKey,
+  keyLength: rawSupabaseKey?.length || 0,
+  keySanitized: rawSupabaseKey !== supabaseKey,
+  urlPreview: supabaseUrl?.substring(0, 20) + '...',
+  keyPreview: supabaseKey?.substring(0, 10) + '...'
+})
 
 // Create Supabase client with graceful fallback if credentials are missing
 let supabase: ReturnType<typeof createClient<Database>> | null = null
 
 if (supabaseUrl && supabaseKey && supabaseUrl !== 'your_supabase_url_here' && supabaseKey !== 'your_supabase_anon_key_here') {
   try {
-    supabase = createClient<Database>(supabaseUrl, supabaseKey)
+    supabase = createClient<Database>(supabaseUrl, supabaseKey, {
+      auth: {
+        persistSession: false, // Disable session persistence to avoid potential header issues
+      }
+    })
     console.log('✅ Supabase client initialized successfully')
   } catch (error) {
     console.warn('⚠️ Failed to initialize Supabase client:', error)
