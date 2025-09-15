@@ -13,26 +13,69 @@ const generateSessionId = () => {
 
 // Convert CSV row to database insert format
 export const csvRowToDbFormat = (
-  csvRow: CampaignCSVRow, 
+  csvRow: CampaignCSVRow,
   uploadTimestamp: string = new Date().toISOString()
 ): CampaignDataInsert => {
+  // Sanitize date field
+  let cleanDate = csvRow.DATE;
+  if (typeof cleanDate !== 'string' || !cleanDate || cleanDate === 'Totals') {
+    throw new Error(`Invalid date field: ${cleanDate}`);
+  }
+  cleanDate = cleanDate.trim();
+
+  // Sanitize campaign name field
+  let campaignName = csvRow['CAMPAIGN ORDER NAME'];
+  if (typeof campaignName !== 'string' || !campaignName) {
+    throw new Error(`Invalid campaign_order_name field: ${campaignName}`);
+  }
+  // Remove null bytes, control characters, and trim whitespace
+  campaignName = String(campaignName)
+    .replace(/\u0000/g, '') // Remove null bytes
+    .replace(/[\u0000-\u001F\u007F]/g, '') // Remove control characters
+    .trim();
+
+  if (!campaignName) {
+    throw new Error(`Campaign name is empty after sanitization`);
+  }
+
+  // Sanitize numeric fields with proper validation
+  const parseNumericField = (value: any, fieldName: string): number => {
+    if (value === null || value === undefined || value === '') return 0;
+    const parsed = Number(value);
+    if (isNaN(parsed)) {
+      console.warn(`Invalid ${fieldName} value: ${value}, defaulting to 0`);
+      return 0;
+    }
+    return parsed;
+  };
+
+  const parseOptionalNumericField = (value: any, fieldName: string): number | null => {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number(value);
+    if (isNaN(parsed)) {
+      console.warn(`Invalid ${fieldName} value: ${value}, defaulting to null`);
+      return null;
+    }
+    return parsed;
+  };
+
   return {
-    date: csvRow.DATE,
-    campaign_order_name: csvRow['CAMPAIGN ORDER NAME'],
-    impressions: Number(csvRow.IMPRESSIONS) || 0,
-    clicks: Number(csvRow.CLICKS) || 0,
-    revenue: Number(csvRow.REVENUE) || 0,
-    spend: Number(csvRow.SPEND) || 0,
-    transactions: csvRow.TRANSACTIONS ? Number(csvRow.TRANSACTIONS) : null,
-    ctr: csvRow.CTR ? Number(csvRow.CTR) : null,
-    cpm: csvRow.CPM ? Number(csvRow.CPM) : null,
-    cpc: csvRow.CPC ? Number(csvRow.CPC) : null,
-    roas: csvRow.ROAS ? Number(csvRow.ROAS) : null,
+    date: cleanDate,
+    campaign_order_name: campaignName,
+    impressions: parseNumericField(csvRow.IMPRESSIONS, 'impressions'),
+    clicks: parseNumericField(csvRow.CLICKS, 'clicks'),
+    revenue: parseNumericField(csvRow.REVENUE, 'revenue'),
+    spend: parseNumericField(csvRow.SPEND, 'spend'),
+    transactions: parseOptionalNumericField(csvRow.TRANSACTIONS, 'transactions'),
+    ctr: parseOptionalNumericField(csvRow.CTR, 'ctr'),
+    cpm: parseOptionalNumericField(csvRow.CPM, 'cpm'),
+    cpc: parseOptionalNumericField(csvRow.CPC, 'cpc'),
+    roas: parseOptionalNumericField(csvRow.ROAS, 'roas'),
     data_source: 'csv_upload',
     user_session_id: generateSessionId(),
     uploaded_at: uploadTimestamp,
     orangellow_corrected: csvRow._ORANGELLOW_CORRECTED || false,
-    original_spend: csvRow._ORIGINAL_SPEND ? Number(csvRow._ORIGINAL_SPEND) : null
+    original_spend: parseOptionalNumericField(csvRow._ORIGINAL_SPEND, 'original_spend')
   }
 }
 
@@ -71,7 +114,33 @@ export const saveCampaignData = async (
     console.log('🔍 Attempting direct database save (skipping setup checks)...')
 
     const uploadTimestamp = new Date().toISOString()
-    const dbRows = csvData.map(row => csvRowToDbFormat(row, uploadTimestamp))
+
+    // Filter and sanitize data, handling invalid rows gracefully
+    const validDbRows = []
+    const invalidRows = []
+
+    for (let i = 0; i < csvData.length; i++) {
+      try {
+        const dbRow = csvRowToDbFormat(csvData[i], uploadTimestamp)
+        validDbRows.push(dbRow)
+      } catch (error) {
+        console.warn(`⚠️ Skipping invalid row ${i + 1}:`, error instanceof Error ? error.message : error)
+        invalidRows.push({ index: i + 1, row: csvData[i], error: error instanceof Error ? error.message : 'Unknown error' })
+      }
+    }
+
+    if (validDbRows.length === 0) {
+      return {
+        success: false,
+        message: `No valid rows to save. ${invalidRows.length} rows were invalid.`
+      }
+    }
+
+    if (invalidRows.length > 0) {
+      console.warn(`⚠️ ${invalidRows.length} invalid rows were skipped out of ${csvData.length} total rows`)
+    }
+
+    const dbRows = validDbRows
 
     console.log(`💾 Upserting ${dbRows.length} rows to Supabase...`)
 
