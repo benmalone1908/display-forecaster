@@ -113,7 +113,7 @@ const FileUpload = ({ onDataLoaded, onPacingDataLoaded, onContractTermsLoaded, o
                 if (header.toUpperCase() === "DATE") {
                   try {
                     const dateStr = String(value).trim();
-                    console.log(`Processing date from CSV row ${rowIndex + 1}: ${dateStr}`);
+                    // Processing date silently
                     
                     processed[header] = dateStr;
                     
@@ -123,7 +123,7 @@ const FileUpload = ({ onDataLoaded, onPacingDataLoaded, onContractTermsLoaded, o
                       return null;
                     }
                     
-                    console.log(`Successfully processed date in row ${rowIndex + 1}: ${dateStr} -> ${parsedDate.toISOString()}`);
+                    // Date processed successfully
                   } catch (e) {
                     console.error(`Error parsing date in row ${rowIndex + 1}:`, e);
                     return null;
