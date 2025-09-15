@@ -11,32 +11,40 @@ const generateSessionId = () => {
   return userSessionId
 }
 
+// Comprehensive string sanitization function
+const sanitizeStringForDatabase = (value: any, fieldName: string): string => {
+  if (value === null || value === undefined) {
+    throw new Error(`${fieldName} cannot be null or undefined`)
+  }
+
+  let sanitized = String(value)
+    .replace(/\u0000/g, '') // Remove null bytes
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove all control characters
+    .replace(/[^\x20-\x7E]/g, '') // Keep only printable ASCII characters
+    .replace(/[\r\n\t]/g, ' ') // Replace line breaks and tabs with spaces
+    .replace(/\s+/g, ' ') // Normalize multiple spaces
+    .trim()
+
+  if (!sanitized) {
+    throw new Error(`${fieldName} is empty after sanitization`)
+  }
+
+  return sanitized
+}
+
 // Convert CSV row to database insert format
 export const csvRowToDbFormat = (
   csvRow: CampaignCSVRow,
   uploadTimestamp: string = new Date().toISOString()
 ): CampaignDataInsert => {
   // Sanitize date field
-  let cleanDate = csvRow.DATE;
-  if (typeof cleanDate !== 'string' || !cleanDate || cleanDate === 'Totals') {
-    throw new Error(`Invalid date field: ${cleanDate}`);
+  if (csvRow.DATE === 'Totals') {
+    throw new Error(`Invalid date field: Totals row detected`);
   }
-  cleanDate = cleanDate.trim();
+  const cleanDate = sanitizeStringForDatabase(csvRow.DATE, 'date');
 
   // Sanitize campaign name field
-  let campaignName = csvRow['CAMPAIGN ORDER NAME'];
-  if (typeof campaignName !== 'string' || !campaignName) {
-    throw new Error(`Invalid campaign_order_name field: ${campaignName}`);
-  }
-  // Remove null bytes, control characters, and trim whitespace
-  campaignName = String(campaignName)
-    .replace(/\u0000/g, '') // Remove null bytes
-    .replace(/[\u0000-\u001F\u007F]/g, '') // Remove control characters
-    .trim();
-
-  if (!campaignName) {
-    throw new Error(`Campaign name is empty after sanitization`);
-  }
+  const campaignName = sanitizeStringForDatabase(csvRow['CAMPAIGN ORDER NAME'], 'campaign_order_name');
 
   // Sanitize numeric fields with proper validation
   const parseNumericField = (value: any, fieldName: string): number => {
@@ -71,9 +79,9 @@ export const csvRowToDbFormat = (
     cpm: parseOptionalNumericField(csvRow.CPM, 'cpm'),
     cpc: parseOptionalNumericField(csvRow.CPC, 'cpc'),
     roas: parseOptionalNumericField(csvRow.ROAS, 'roas'),
-    data_source: 'csv_upload',
-    user_session_id: generateSessionId(),
-    uploaded_at: uploadTimestamp,
+    data_source: sanitizeStringForDatabase('csv_upload', 'data_source'),
+    user_session_id: sanitizeStringForDatabase(generateSessionId(), 'user_session_id'),
+    uploaded_at: sanitizeStringForDatabase(uploadTimestamp, 'uploaded_at'),
     orangellow_corrected: csvRow._ORANGELLOW_CORRECTED || false,
     original_spend: parseOptionalNumericField(csvRow._ORIGINAL_SPEND, 'original_spend')
   }
