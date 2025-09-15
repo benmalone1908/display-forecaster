@@ -16,7 +16,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ResponsiveContainer, LineChart, Line, Tooltip, AreaChart, Area, XAxis, YAxis } from "recharts";
 import { getColorClasses } from "@/utils/anomalyColors";
-import { TrendingDown, Maximize, Eye, MousePointer, ShoppingCart, DollarSign, Percent, X } from "lucide-react";
+import { TrendingDown, Maximize, Eye, MousePointer, ShoppingCart, DollarSign, Percent } from "lucide-react";
 import SparkChartModal from "@/components/SparkChartModal";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import GlobalFilters from "@/components/GlobalFilters";
@@ -31,7 +31,7 @@ import CustomReportBuilder from "@/components/CustomReportBuilder";
 import StatusTab from "@/components/StatusTab";
 import ForecastTab from "@/components/ForecastTab";
 import { applySpendCorrections, getSpendCorrectionSummary } from "@/utils/orangellowSpendCorrection";
-import { saveCampaignData, loadAllCampaignData, hasAnyData, clearAllData } from "@/utils/dataStorage";
+import { saveCampaignData, loadAllCampaignData, hasAnyData } from "@/utils/dataStorage";
 import { useAuth } from "@/contexts/AuthContext";
 
 type MetricType = 
@@ -526,7 +526,6 @@ const ForecastContent = ({
   onUploadClick,
   onDataLoaded,
   onProcessFiles,
-  onClearAllData,
   logout
 }: { 
   data: any[]; 
@@ -535,7 +534,6 @@ const ForecastContent = ({
   onUploadClick: () => void;
   onDataLoaded: (data: any[]) => void;
   onProcessFiles: (uploadedData: any[], pacingData?: any[], contractTermsData?: any[]) => void;
-  onClearAllData: () => void;
   logout: () => void;
 }) => {
   // Calculate available date range from data to constrain date picker
@@ -634,15 +632,6 @@ const ForecastContent = ({
             >
               <Plus className="h-4 w-4" />
               Upload New File
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={onClearAllData}
-              className="flex items-center gap-2"
-            >
-              <X className="h-4 w-4" />
-              Clear All Data
             </Button>
             <Button
               variant="ghost"
@@ -945,28 +934,6 @@ const Index = () => {
     setIsUploadModalOpen(true);
   };
 
-  // Temporary function to clear all database data
-  const handleClearAllData = async () => {
-    try {
-      console.log('🗑️ Starting complete database clear...');
-      const result = await clearAllData();
-      
-      if (result.success) {
-        toast.success(result.message);
-        console.log(`✅ Database cleared: ${result.message}`);
-        
-        // Clear the UI data as well
-        setData([]);
-        toast.success(`🔄 UI cleared - ready for fresh data upload`);
-      } else {
-        toast.error(`Database clear failed: ${result.message}`);
-        console.error(`❌ Database clear failed: ${result.message}`);
-      }
-    } catch (error) {
-      toast.error('Database clear error - check console');
-      console.error('❌ Database clear error:', error);
-    }
-  };
 
 
   return (
@@ -990,7 +957,6 @@ const Index = () => {
             onUploadClick={handleUploadClick}
             onDataLoaded={handleDataLoaded}
             onProcessFiles={handleProcessFiles}
-            onClearAllData={handleClearAllData}
             logout={logout}
           />
         )}
