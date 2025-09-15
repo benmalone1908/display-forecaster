@@ -1,14 +1,15 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '../types/database'
 
-// Sanitize environment variables to prevent header issues
+// Sanitize environment variables to prevent header issues (preserve valid API key characters)
 const sanitizeEnvVar = (value: string | undefined): string | undefined => {
   if (!value) return value
 
+  // For API keys/URLs, only remove the most problematic characters
+  // Keep alphanumeric, dots, dashes, underscores, and other URL/key-safe characters
   return String(value)
-    .replace(/\u0000/g, '') // Remove null bytes
-    .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove control characters
-    .replace(/[^\x20-\x7E]/g, '') // Keep only printable ASCII characters
+    .replace(/\u0000/g, '') // Remove null bytes only
+    .replace(/[\u0000-\u001F]/g, '') // Remove only control characters (not extended ASCII)
     .trim()
 }
 
