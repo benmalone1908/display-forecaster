@@ -1,5 +1,6 @@
-import { supabase, canUseDatabase } from '../lib/supabase'
+import { supabase, canUseDatabase, ensureDatabaseReady } from '../lib/supabase'
 import type { CampaignCSVRow, CampaignDataInsert, CampaignDataRow } from '../types/database'
+import { ensureDatabaseSetup, getDatabaseSetupInstructions } from './databaseSetup'
 
 // Generate a session ID for this user session
 let userSessionId: string | null = null
@@ -60,11 +61,40 @@ export const saveCampaignData = async (
 ): Promise<{ success: boolean; message: string; savedCount?: number }> => {
   try {
     if (!supabase) {
-      return { success: false, message: 'Database not available - data saved locally only' }
+      return { 
+        success: false, 
+        message: 'Database not available - Supabase client not initialized' 
+      }
     }
 
+    // Check if database is ready and attempt setup if needed
+    console.log('🔍 Checking database readiness...')
+    const dbCheck = await ensureDatabaseReady()
+    
+    if (!dbCheck.ready) {
+      console.warn(`⚠️ Database not ready: ${dbCheck.message}`)
+      
+      // Attempt automatic setup
+      console.log('🔧 Attempting automatic database setup...')
+      const setupResult = await ensureDatabaseSetup()
+      
+      if (!setupResult.success) {
+        console.error('❌ Automatic database setup failed:', setupResult.message)
+        console.log('📋 Manual setup required:')
+        console.log(getDatabaseSetupInstructions())
+        
+        return { 
+          success: false, 
+          message: `Database table setup required. ${setupResult.message}. Check console for setup instructions.` 
+        }
+      }
+      
+      console.log('✅ Automatic database setup completed')
+    }
+
+    // Final check after potential setup
     if (!(await canUseDatabase())) {
-      return { success: false, message: 'Database connection failed - data saved locally only' }
+      return { success: false, message: 'Database connection failed after setup attempt' }
     }
 
     const uploadTimestamp = new Date().toISOString()

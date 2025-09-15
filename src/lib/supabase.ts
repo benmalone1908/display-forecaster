@@ -34,3 +34,39 @@ export const canUseDatabase = async (): Promise<boolean> => {
     return false
   }
 }
+
+// Enhanced database check that attempts to setup table if needed
+export const ensureDatabaseReady = async (): Promise<{ ready: boolean; message: string }> => {
+  if (!supabase) {
+    return { ready: false, message: 'Supabase client not initialized' }
+  }
+
+  try {
+    // Check if table exists and is accessible
+    const { error } = await supabase.from('campaign_data').select('count', { count: 'exact', head: true }).limit(1)
+    
+    if (!error) {
+      return { ready: true, message: 'Database ready' }
+    }
+    
+    // If table doesn't exist, provide setup instructions
+    if (error.code === 'PGRST116' || error.message.includes('does not exist')) {
+      return { 
+        ready: false, 
+        message: 'Database table needs to be created. Please run the setup SQL in your Supabase dashboard.' 
+      }
+    }
+    
+    // Some other database error
+    return { 
+      ready: false, 
+      message: `Database error: ${error.message}` 
+    }
+    
+  } catch (err) {
+    return { 
+      ready: false, 
+      message: `Database connection failed: ${err instanceof Error ? err.message : 'Unknown error'}` 
+    }
+  }
+}
