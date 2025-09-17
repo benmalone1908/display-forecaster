@@ -161,24 +161,27 @@ export const saveCampaignData = async (
       })
     }
 
-    // FAST CLEAR: Just delete all existing data and insert fresh data
-    console.log(`🗑️ Clearing all existing campaign data for fresh upload...`)
-    
-    let actualDeletedCount = 0
-    const { error: clearError } = await supabase
-      .from('campaign_data')
-      .delete()
-      .neq('id', '00000000-0000-0000-0000-000000000000') // Delete all rows
+    // PROPER UPSERT: Only delete/update data for dates that are in the new upload
+    const uploadDates = [...new Set(dbRows.map(row => row.date))];
+    console.log(`🔄 Upserting data for ${uploadDates.length} unique dates:`, uploadDates.slice(0, 5), uploadDates.length > 5 ? '...' : '');
 
-    if (clearError) {
-      console.warn(`⚠️ Could not clear existing data:`, clearError.message)
-    } else {
-      console.log(`🗑️ Successfully cleared all existing campaign data`)
+    // Delete existing data only for the dates we're uploading
+    let deletedCount = 0;
+    if (uploadDates.length > 0) {
+      const { count, error: clearError } = await supabase
+        .from('campaign_data')
+        .delete({ count: 'exact' })
+        .in('date', uploadDates);
+
+      if (clearError) {
+        console.warn(`⚠️ Could not clear existing data for upload dates:`, clearError.message);
+      } else {
+        deletedCount = count || 0;
+        console.log(`🗑️ Deleted ${deletedCount} existing records for upload dates`);
+      }
     }
-    
-    console.log(`🗑️ Total deleted: ${actualDeletedCount} existing records to make room for fresh data`)
 
-    // Now insert the new data
+    // Now insert the new data for these dates
     let successCount = 0
     const errors = []
     
@@ -245,11 +248,11 @@ export const saveCampaignData = async (
       }
     }
 
-    console.log(`✅ Successfully upserted ${successCount} rows to Supabase (deleted ${actualDeletedCount} old, inserted ${successCount} new)`)
+    console.log(`✅ Successfully upserted ${successCount} rows to Supabase (deleted ${deletedCount} old, inserted ${successCount} new)`)
     
     return { 
       success: true, 
-      message: `Successfully upserted ${successCount} campaign records (${actualDeletedCount} replaced, ${successCount - actualDeletedCount} new)`, 
+      message: `Successfully upserted ${successCount} campaign records (${deletedCount} replaced, ${successCount - deletedCount} new)`, 
       savedCount: successCount 
     }
 

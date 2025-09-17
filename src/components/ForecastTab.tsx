@@ -28,9 +28,9 @@ const ForecastTab = ({ data }: ForecastTabProps) => {
   const [sortBy, setSortBy] = useState<'name' | 'change' | 'changeDollar'>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
-  // Use today's date instead of most recent data date to avoid filtering issues
+  // Use today's date for forecast calculations so current month = September, previous = August
   const currentDate = useMemo(() => {
-    return new Date(); // Always use today's date
+    return new Date(); // Use today's date (September 2025)
   }, []);
 
   // Generate forecast data
@@ -263,8 +263,19 @@ const ForecastTab = ({ data }: ForecastTabProps) => {
       if (!row.DATE || row.DATE === 'Totals') return false;
       const rowDate = parseDateString(row.DATE);
       if (!rowDate) return false;
-      return rowDate.getMonth() === previousMonthNum && rowDate.getFullYear() === previousMonthYear;
+      const isMatch = rowDate.getMonth() === previousMonthNum && rowDate.getFullYear() === previousMonthYear;
+      return isMatch;
     });
+
+    console.log('🔍 Month-over-month debug info:');
+    console.log('Current date:', currentDate.toDateString());
+    console.log('Current month:', currentDate.getMonth(), 'Year:', currentDate.getFullYear());
+    console.log('Previous month:', previousMonthNum, 'Year:', previousMonthYear);
+    console.log('Previous month data rows:', previousMonthData.length);
+
+    // Debug: Show some sample dates from data
+    const sampleDates = data.slice(0, 5).map(row => ({ date: row.DATE, parsed: parseDateString(row.DATE) }));
+    console.log('Sample data dates:', sampleDates);
     
     // Calculate previous month totals by agency type
     let prevDirectSpend = 0;
@@ -275,20 +286,30 @@ const ForecastTab = ({ data }: ForecastTabProps) => {
       const { abbreviation } = extractAgencyInfo(campaignName);
       const agencyType = getAgencyType(abbreviation);
       const spend = Number(row.SPEND) || 0;
-      
+
       if (agencyType === 'Direct') {
         prevDirectSpend += spend;
       } else {
         prevChannelSpend += spend;
       }
     });
+
+    console.log('🔍 Previous month spend totals:');
+    console.log('Previous Direct spend:', prevDirectSpend);
+    console.log('Previous Channel spend:', prevChannelSpend);
     
     const prevTotal = prevDirectSpend + prevChannelSpend;
     const currentDirect = directSummary?.forecastSpend || 0;
     const currentChannel = channelSummary?.forecastSpend || 0;
     const currentTotal = currentDirect + currentChannel;
+
+    console.log('🔍 Current month forecast totals:');
+    console.log('Current Direct forecast:', currentDirect);
+    console.log('Current Channel forecast:', currentChannel);
+    console.log('Current Total forecast:', currentTotal);
     
-    return {
+    // Debug the final calculation results
+    const result = {
       direct: currentDirect,
       channel: currentChannel,
       total: currentTotal,
@@ -299,6 +320,22 @@ const ForecastTab = ({ data }: ForecastTabProps) => {
       channelChange: prevChannelSpend > 0 ? ((currentChannel - prevChannelSpend) / prevChannelSpend) * 100 : 0,
       totalChange: prevTotal > 0 ? ((currentTotal - prevTotal) / prevTotal) * 100 : 0
     };
+
+    console.log('🔍 Final month-over-month calculation results:');
+    console.log('Direct change calculation:', {
+      current: currentDirect,
+      previous: prevDirectSpend,
+      change: result.directChange,
+      formula: `((${currentDirect} - ${prevDirectSpend}) / ${prevDirectSpend}) * 100`
+    });
+    console.log('Channel change calculation:', {
+      current: currentChannel,
+      previous: prevChannelSpend,
+      change: result.channelChange,
+      formula: `((${currentChannel} - ${prevChannelSpend}) / ${prevChannelSpend}) * 100`
+    });
+
+    return result;
   }, [summaryData, data, currentDate, extractAgencyInfo]);
 
   // Prepare chart data - forecast line showing daily forecast values (same as tables)

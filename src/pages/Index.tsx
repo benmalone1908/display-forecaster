@@ -6,7 +6,7 @@ import DateRangePicker from "@/components/DateRangePicker";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CampaignSparkCharts from "@/components/CampaignSparkCharts";
-import { LayoutDashboard, ChartLine, FileText, Target, Plus, Activity, FileDown, Clock, TrendingUp, LogOut } from "lucide-react";
+import { LayoutDashboard, ChartLine, FileText, Target, Plus, Activity, FileDown, Clock, TrendingUp, LogOut, Calculator } from "lucide-react";
 import DashboardWrapper from "@/components/DashboardWrapper";
 import { setToStartOfDay, setToEndOfDay, logDateDetails, normalizeDate, parseDateString } from "@/lib/utils";
 import { CampaignFilterProvider, useCampaignFilter, AGENCY_MAPPING } from "@/contexts/CampaignFilterContext";
@@ -31,7 +31,10 @@ import CustomReportBuilder from "@/components/CustomReportBuilder";
 import StatusTab from "@/components/StatusTab";
 import ForecastTab from "@/components/ForecastTab";
 import { applySpendCorrections, getSpendCorrectionSummary } from "@/utils/orangellowSpendCorrection";
+import { applyManualCpmCorrections, getManualCpmCorrectionSummary } from "@/utils/manualCpmCalculations";
 import { saveCampaignData, loadAllCampaignData, hasAnyData } from "@/utils/dataStorage";
+import { previewRecalculation, applyRecalculation, canRecalculate, RecalculationPreview } from "@/utils/dataRecalculation";
+// import RecalculationModal from "@/components/RecalculationModal";
 import { useAuth } from "@/contexts/AuthContext";
 
 type MetricType = 
@@ -519,23 +522,28 @@ const AggregatedSparkCharts = ({ data }: { data: any[] }) => {
   );
 };
 
-const ForecastContent = ({ 
-  data, 
-  dateRange, 
+const ForecastContent = ({
+  data,
+  dateRange,
   onDateRangeChange,
   onUploadClick,
   onDataLoaded,
   onProcessFiles,
   logout
-}: { 
-  data: any[]; 
-  dateRange: DateRange | undefined; 
+}: {
+  data: any[];
+  dateRange: DateRange | undefined;
   onDateRangeChange: (range: DateRange | undefined) => void;
   onUploadClick: () => void;
   onDataLoaded: (data: any[]) => void;
   onProcessFiles: (uploadedData: any[], pacingData?: any[], contractTermsData?: any[]) => void;
   logout: () => void;
 }) => {
+  // Recalculation state (simplified)
+  // const [isRecalculationModalOpen, setIsRecalculationModalOpen] = useState(false);
+  // const [recalculationPreview, setRecalculationPreview] = useState<RecalculationPreview | null>(null);
+  // const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  // const [isApplyingRecalculation, setIsApplyingRecalculation] = useState(false);
   // Calculate available date range from data to constrain date picker
   const availableDateRange = useMemo(() => {
     if (!data || data.length === 0) {
@@ -565,6 +573,69 @@ const ForecastContent = ({
     
     return result;
   }, [data]);
+
+  // Recalculation handlers
+  const handleRecalculationClick = async () => {
+    console.log('🔍 Recalculation button clicked');
+
+    try {
+      console.log('🔍 Calling previewRecalculation...');
+      const result = await previewRecalculation();
+      console.log('🔍 Preview result:', result);
+
+      if (result.success && result.preview) {
+        console.log('🔍 Preview successful:', result.preview);
+        // Simple alert instead of modal for now
+        const affected = result.preview.affectedRows;
+        const confirmed = confirm(`Found ${affected} campaigns that can be recalculated with new CPM rates. Apply changes?`);
+
+        if (confirmed) {
+          toast.success("Applying recalculation...");
+          const applyResult = await applyRecalculation();
+          if (applyResult.success && applyResult.updatedData) {
+            toast.success(applyResult.message);
+            onDataLoaded(applyResult.updatedData);
+          } else {
+            toast.error(applyResult.message);
+          }
+        }
+      } else {
+        console.error('🔍 Preview failed:', result.message);
+        toast.error(result.message);
+      }
+    } catch (error) {
+      console.error('🔍 Error generating preview:', error);
+      toast.error(`Failed to generate recalculation preview: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  // const handleConfirmRecalculation = async () => {
+  //   setIsApplyingRecalculation(true);
+
+  //   try {
+  //     const result = await applyRecalculation();
+  //     if (result.success && result.updatedData) {
+  //       toast.success(result.message);
+  //       onDataLoaded(result.updatedData); // Update the UI with new data
+  //       setIsRecalculationModalOpen(false);
+  //       setRecalculationPreview(null);
+  //     } else {
+  //       toast.error(result.message);
+  //     }
+  //   } catch (error) {
+  //     console.error('Error applying recalculation:', error);
+  //     toast.error('Failed to apply recalculation');
+  //   } finally {
+  //     setIsApplyingRecalculation(false);
+  //   }
+  // };
+
+  // const handleCancelRecalculation = () => {
+  //   setIsRecalculationModalOpen(false);
+  //   setRecalculationPreview(null);
+  //   setIsLoadingPreview(false);
+  //   setIsApplyingRecalculation(false);
+  // };
 
   const getFilteredData = () => {
     let filtered = data;
@@ -617,13 +688,24 @@ const ForecastContent = ({
           </div>
           
           <div className="flex items-center gap-2">
-            <DateRangePicker 
+            <DateRangePicker
               dateRange={dateRange}
               onDateRangeChange={onDateRangeChange}
               displayDateRangeSummary={false}
               minDate={availableDateRange.min}
               maxDate={availableDateRange.max}
             />
+            {data.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRecalculationClick}
+                className="flex items-center gap-2"
+              >
+                <Calculator className="h-4 w-4" />
+                Recalculate Data
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -667,6 +749,17 @@ const ForecastContent = ({
           <ForecastTab data={filteredData} />
         )}
       </div>
+
+      {/* Recalculation Modal - temporarily disabled */}
+      {/* <RecalculationModal
+        open={isRecalculationModalOpen}
+        onOpenChange={setIsRecalculationModalOpen}
+        preview={recalculationPreview}
+        isLoading={isLoadingPreview}
+        onConfirm={handleConfirmRecalculation}
+        onCancel={handleCancelRecalculation}
+        isApplying={isApplyingRecalculation}
+      /> */}
     </>
   );
 };
@@ -849,13 +942,26 @@ const Index = () => {
       });
       
       // Apply Orangellow spend corrections (SM and OG campaigns using $7 CPM)
-      const correctedData = applySpendCorrections(processedData);
-      
-      // Log spend correction summary
-      const correctionSummary = getSpendCorrectionSummary(correctedData);
-      if (correctionSummary.correctedRows > 0) {
-        console.log(`Orangellow spend corrections applied:`, correctionSummary);
-        toast.success(`Applied spend corrections to ${correctionSummary.correctedRows} Orangellow campaigns using $7 CPM`);
+      const orangellowCorrectedData = applySpendCorrections(processedData);
+
+      // Log Orangellow spend correction summary
+      const orangellowCorrectionSummary = getSpendCorrectionSummary(orangellowCorrectedData);
+      if (orangellowCorrectionSummary.correctedRows > 0) {
+        console.log(`Orangellow spend corrections applied:`, orangellowCorrectionSummary);
+        toast.success(`Applied spend corrections to ${orangellowCorrectionSummary.correctedRows} Orangellow campaigns using $7 CPM`);
+      }
+
+      // Apply manual CPM corrections for specific campaigns
+      const correctedData = applyManualCpmCorrections(orangellowCorrectedData);
+
+      // Log manual CPM correction summary
+      const manualCpmSummary = getManualCpmCorrectionSummary(correctedData);
+      if (manualCpmSummary.correctedRows > 0) {
+        console.log(`Manual CPM corrections applied:`, manualCpmSummary);
+        const adjustmentDetails = Object.entries(manualCpmSummary.adjustmentsByType)
+          .map(([identifier, details]) => `${details.count} ${identifier} campaigns at $${details.cpm} CPM`)
+          .join(', ');
+        toast.success(`Applied manual CPM corrections: ${adjustmentDetails}`);
       }
       
       // IMMEDIATE UPDATE: Always update UI first, then handle database save

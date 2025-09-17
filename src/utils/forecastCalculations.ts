@@ -40,13 +40,17 @@ export function getDatesInMonth(year: number, month: number): Date[] {
 
 // Calculate MTD metrics for a specific agency type
 export function calculateMTDMetrics(
-  data: any[], 
+  data: any[],
   agencyType: 'Direct' | 'Channel Partner',
   currentDate: Date,
   extractAgencyInfo: (campaignName: string) => { abbreviation: string }
 ): { mtdImpressions: number; mtdSpend: number; dailyData: any[] } {
   const currentMonth = currentDate.getMonth();
   const currentYear = currentDate.getFullYear();
+
+  console.log(`🔍 MTD Calculation for ${agencyType}:`);
+  console.log('Current date:', currentDate.toDateString());
+  console.log('Looking for month:', currentMonth, 'year:', currentYear);
   
   // Filter data for current month and agency type
   const filteredData = data.filter(row => {
