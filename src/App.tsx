@@ -7,6 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import AuthGuard from "@/components/AuthGuard";
 import Index from "./pages/Index";
 import PdfTestPage from "./pages/PdfTestPage";
+import SalesforceComparison from "./pages/SalesforceComparison";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,6 +23,7 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/pdf-test" element={<PdfTestPage />} />
+              <Route path="/salesforce-comparison" element={<SalesforceComparison />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

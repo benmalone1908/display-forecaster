@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { DateRange } from "react-day-picker";
 import FileUpload from "@/components/FileUpload";
 import UploadModal from "@/components/UploadModal";
@@ -6,7 +7,7 @@ import DateRangePicker from "@/components/DateRangePicker";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CampaignSparkCharts from "@/components/CampaignSparkCharts";
-import { LayoutDashboard, ChartLine, FileText, Target, Plus, Activity, FileDown, Clock, TrendingUp, LogOut, Calculator } from "lucide-react";
+import { LayoutDashboard, ChartLine, FileText, Target, Plus, Activity, FileDown, Clock, TrendingUp, LogOut, Calculator, BarChart3 } from "lucide-react";
 import DashboardWrapper from "@/components/DashboardWrapper";
 import { setToStartOfDay, setToEndOfDay, logDateDetails, normalizeDate, parseDateString } from "@/lib/utils";
 import { CampaignFilterProvider, useCampaignFilter, AGENCY_MAPPING } from "@/contexts/CampaignFilterContext";
@@ -688,6 +689,27 @@ const ForecastContent = ({
           </div>
           
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                console.log('Salesforce Comparison button clicked');
+                try {
+                  navigate("/salesforce-comparison");
+                } catch (error) {
+                  console.error('Navigation error:', error);
+                  window.location.href = '/salesforce-comparison';
+                }
+              }}
+              className="flex items-center gap-2"
+            >
+              <BarChart3 className="h-4 w-4" />
+              Salesforce Comparison
+            </Button>
+            {/* Temporary debug link */}
+            <a href="/salesforce-comparison" className="text-xs text-blue-600 underline">
+              (Direct Link)
+            </a>
             <DateRangePicker
               dateRange={dateRange}
               onDateRangeChange={onDateRangeChange}
@@ -695,7 +717,8 @@ const ForecastContent = ({
               minDate={availableDateRange.min}
               maxDate={availableDateRange.max}
             />
-            {data.length > 0 && (
+            {/* Temporarily hidden - can be re-enabled by changing false to true */}
+            {false && data.length > 0 && (
               <Button
                 variant="outline"
                 size="sm"
@@ -772,6 +795,7 @@ const Index = () => {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false); // Modal state
   
   const { logout } = useAuth();
+  const navigate = useNavigate();
 
   // Auto-load data when component mounts
   useEffect(() => {
@@ -790,15 +814,25 @@ const Index = () => {
             setData(result.data);
             setShowDashboard(true); // Automatically show forecast since we have data
             
-            // Set default date range to start from 1st of previous month
-            const today = new Date();
-            const firstOfPreviousMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-            const endOfCurrentMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-            
-            setDateRange({
-              from: firstOfPreviousMonth,
-              to: endOfCurrentMonth
-            });
+            // Set default date range based on actual data range
+            const dataDateRange = result.data
+              .map(row => row.DATE)
+              .filter(date => date && date !== 'Totals')
+              .map(dateStr => parseDateString(dateStr))
+              .filter(Boolean) as Date[];
+
+            if (dataDateRange.length > 0) {
+              dataDateRange.sort((a, b) => a.getTime() - b.getTime());
+              const minDate = dataDateRange[0];
+              const maxDate = dataDateRange[dataDateRange.length - 1];
+
+              console.log(`Auto-load: Setting date range from actual data: ${minDate.toLocaleDateString()} to ${maxDate.toLocaleDateString()}`);
+
+              setDateRange({
+                from: minDate,
+                to: maxDate
+              });
+            }
             
             toast.success(`Loaded ${result.data.length} campaign records from database`);
           } else {
@@ -998,21 +1032,32 @@ const Index = () => {
         // Keep the uploaded data that's already displayed
       });
       
-      // Set default date range to start from 1st of previous month
-      const today = new Date();
-      const firstOfPreviousMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-      const endOfCurrentMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-      
-      setDateRange({
-        from: firstOfPreviousMonth,
-        to: endOfCurrentMonth
-      });
-      
+      // Set default date range based on actual data range
       const dates = correctedData.map(row => row.DATE).filter(date => date && date !== 'Totals').sort();
+      if (dates.length > 0) {
+        // Parse the actual data dates
+        const parsedDates = dates
+          .map(dateStr => parseDateString(dateStr))
+          .filter(Boolean) as Date[];
+
+        if (parsedDates.length > 0) {
+          parsedDates.sort((a, b) => a.getTime() - b.getTime());
+          const minDate = parsedDates[0];
+          const maxDate = parsedDates[parsedDates.length - 1];
+
+          console.log(`Setting date range from actual data: ${minDate.toLocaleDateString()} to ${maxDate.toLocaleDateString()}`);
+
+          setDateRange({
+            from: minDate,
+            to: maxDate
+          });
+        }
+      }
+
       if (dates.length > 0) {
         console.log(`Data date range: ${dates[0]} to ${dates[dates.length-1]}`);
         console.log(`Total unique dates: ${new Set(dates).size}`);
-        
+
         const dateCounts: Record<string, number> = {};
         correctedData.forEach(row => {
           dateCounts[row.DATE] = (dateCounts[row.DATE] || 0) + 1;

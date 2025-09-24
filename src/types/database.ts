@@ -9,6 +9,42 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
+      salesforce_revenue: {
+        Row: {
+          id: string
+          mjaa_number: string
+          revenue_date: string
+          monthly_revenue: number
+          month: string
+          mjaa_filename: string | null
+          uploaded_at: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          mjaa_number: string
+          revenue_date: string
+          monthly_revenue: number
+          month: string
+          mjaa_filename?: string | null
+          uploaded_at: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          mjaa_number?: string
+          revenue_date?: string
+          monthly_revenue?: number
+          month?: string
+          mjaa_filename?: string | null
+          uploaded_at?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       campaign_data: {
         Row: {
           id: string
@@ -91,11 +127,25 @@ export interface Database {
   }
 }
 
+export type SalesforceRevenueRow = Database['public']['Tables']['salesforce_revenue']['Row']
+export type SalesforceRevenueInsert = Database['public']['Tables']['salesforce_revenue']['Insert']
+export type SalesforceRevenueUpdate = Database['public']['Tables']['salesforce_revenue']['Update']
+
 export type CampaignDataRow = Database['public']['Tables']['campaign_data']['Row']
 export type CampaignDataInsert = Database['public']['Tables']['campaign_data']['Insert']
 export type CampaignDataUpdate = Database['public']['Tables']['campaign_data']['Update']
 
-// Interface matching CSV data structure
+// Interface matching Salesforce CSV data structure
+export interface SalesforceCSVRow {
+  'MJAA Number': string
+  'Monthly Revenue': number
+  'Revenue Date': string
+  'Product Category': string
+  'MJAA Filename'?: string
+  // Other columns exist but we only need these five
+}
+
+// Interface matching Campaign CSV data structure
 export interface CampaignCSVRow {
   DATE: string
   'CAMPAIGN ORDER NAME': string
@@ -143,6 +193,32 @@ CREATE INDEX IF NOT EXISTS idx_campaign_data_uploaded_at ON campaign_data(upload
 CREATE INDEX IF NOT EXISTS idx_campaign_data_user_session ON campaign_data(user_session_id);
 
 -- Create unique constraint to prevent exact duplicates
-CREATE UNIQUE INDEX IF NOT EXISTS idx_campaign_data_unique 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_campaign_data_unique
 ON campaign_data(date, campaign_order_name, data_source, uploaded_at);
+`;
+
+// SQL for creating the Salesforce revenue table
+export const CREATE_SALESFORCE_TABLE_SQL = `
+-- Salesforce Revenue Table
+CREATE TABLE IF NOT EXISTS salesforce_revenue (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  mjaa_number TEXT NOT NULL,
+  revenue_date DATE NOT NULL,
+  monthly_revenue NUMERIC(12,2) NOT NULL DEFAULT 0,
+  month TEXT NOT NULL,
+  mjaa_filename TEXT,
+  uploaded_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Create indexes for performance
+CREATE INDEX IF NOT EXISTS idx_salesforce_mjaa_number ON salesforce_revenue(mjaa_number);
+CREATE INDEX IF NOT EXISTS idx_salesforce_month ON salesforce_revenue(month);
+CREATE INDEX IF NOT EXISTS idx_salesforce_revenue_date ON salesforce_revenue(revenue_date);
+CREATE INDEX IF NOT EXISTS idx_salesforce_uploaded_at ON salesforce_revenue(uploaded_at);
+
+-- Create unique constraint to prevent duplicates (same IO and date)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_salesforce_unique
+ON salesforce_revenue(mjaa_number, revenue_date);
 `;
