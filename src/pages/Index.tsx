@@ -575,6 +575,39 @@ const ForecastContent = ({
     return result;
   }, [data]);
 
+  // Calculate data freshness for dashboard data
+  const dashboardLastUpdated = useMemo(() => {
+    if (data.length === 0) return null;
+
+    const timestamps = data
+      .map(row => row.uploaded_at)
+      .filter(timestamp => timestamp)
+      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+
+    return timestamps[0] || null;
+  }, [data]);
+
+  // Format timestamp to Pacific Time
+  const formatTimestamp = (timestamp: string | null): string => {
+    if (!timestamp) return 'No data uploaded';
+
+    try {
+      const date = new Date(timestamp);
+      return date.toLocaleString('en-US', {
+        timeZone: 'America/Los_Angeles',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZoneName: 'short'
+      });
+    } catch (error) {
+      return 'Invalid date';
+    }
+  };
+
   // Recalculation handlers
   const handleRecalculationClick = async () => {
     console.log('🔍 Recalculation button clicked');
@@ -746,9 +779,18 @@ const ForecastContent = ({
           </div>
         </div>
       </div>
-      
+
+      {/* Data Freshness Notice */}
+      {data.length > 0 && (
+        <div className="flex justify-end mt-2">
+          <div className="text-xs text-gray-500">
+            Dashboard data last updated: {formatTimestamp(dashboardLastUpdated)}
+          </div>
+        </div>
+      )}
+
       {/* Direct forecast display - no tabs */}
-      <div className="mt-6 animate-fade-in" id="forecast-section">
+      <div className="mt-2 animate-fade-in" id="forecast-section">
         {data.length === 0 ? (
           <div className="text-center py-12 space-y-4">
             <div className="text-6xl text-gray-200">📊</div>
@@ -1013,6 +1055,27 @@ const Index = () => {
             console.log(`📥 Reloaded ${reloadResult.data.length} total records from database`);
             setData(reloadResult.data);
             toast.success(`🔄 Dataset updated: now showing ${reloadResult.data.length} total records`);
+
+            // Set date range based on COMPLETE dataset from database
+            const allDates = reloadResult.data.map(row => row.DATE).filter(date => date && date !== 'Totals').sort();
+            if (allDates.length > 0) {
+              const parsedDates = allDates
+                .map(dateStr => parseDateString(dateStr))
+                .filter(Boolean) as Date[];
+
+              if (parsedDates.length > 0) {
+                parsedDates.sort((a, b) => a.getTime() - b.getTime());
+                const minDate = parsedDates[0];
+                const maxDate = parsedDates[parsedDates.length - 1];
+
+                console.log(`Setting date range from COMPLETE dataset: ${minDate.toLocaleDateString()} to ${maxDate.toLocaleDateString()}`);
+
+                setDateRange({
+                  from: minDate,
+                  to: maxDate
+                });
+              }
+            }
           } else {
             console.warn('⚠️ Could not reload data from database, keeping uploaded data');
             // Keep the uploaded data that's already displayed
@@ -1027,32 +1090,14 @@ const Index = () => {
         toast.error(`Database save error: ${error.message}`);
         // Keep the uploaded data that's already displayed
       });
-      
-      // Set default date range based on actual data range
-      const dates = correctedData.map(row => row.DATE).filter(date => date && date !== 'Totals').sort();
-      if (dates.length > 0) {
-        // Parse the actual data dates
-        const parsedDates = dates
-          .map(dateStr => parseDateString(dateStr))
-          .filter(Boolean) as Date[];
 
-        if (parsedDates.length > 0) {
-          parsedDates.sort((a, b) => a.getTime() - b.getTime());
-          const minDate = parsedDates[0];
-          const maxDate = parsedDates[parsedDates.length - 1];
+      // Note: Date range will be set after database reload completes to include all historical data
 
-          console.log(`Setting date range from actual data: ${minDate.toLocaleDateString()} to ${maxDate.toLocaleDateString()}`);
-
-          setDateRange({
-            from: minDate,
-            to: maxDate
-          });
-        }
-      }
-
-      if (dates.length > 0) {
-        console.log(`Data date range: ${dates[0]} to ${dates[dates.length-1]}`);
-        console.log(`Total unique dates: ${new Set(dates).size}`);
+      // Debug info for uploaded data
+      const uploadedDates = correctedData.map(row => row.DATE).filter(date => date && date !== 'Totals').sort();
+      if (uploadedDates.length > 0) {
+        console.log(`Uploaded data date range: ${uploadedDates[0]} to ${uploadedDates[uploadedDates.length-1]}`);
+        console.log(`Total unique uploaded dates: ${new Set(uploadedDates).size}`);
 
         const dateCounts: Record<string, number> = {};
         correctedData.forEach(row => {

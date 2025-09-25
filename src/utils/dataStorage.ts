@@ -102,7 +102,11 @@ export const dbRowToCsvFormat = (dbRow: CampaignDataRow): CampaignCSVRow => {
     CPC: dbRow.cpc || undefined,
     ROAS: dbRow.roas || undefined,
     _ORANGELLOW_CORRECTED: dbRow.orangellow_corrected || undefined,
-    _ORIGINAL_SPEND: dbRow.original_spend || undefined
+    _ORIGINAL_SPEND: dbRow.original_spend || undefined,
+    // Preserve metadata fields for data freshness tracking
+    uploaded_at: dbRow.uploaded_at,
+    user_session_id: dbRow.user_session_id,
+    data_source: dbRow.data_source
   }
 }
 
@@ -122,6 +126,7 @@ export const saveCampaignData = async (
     console.log('🔍 Attempting direct database save (skipping setup checks)...')
 
     const uploadTimestamp = new Date().toISOString()
+    console.log('🔍 Upload timestamp created:', uploadTimestamp);
 
     // Filter and sanitize data, handling invalid rows gracefully
     const validDbRows = []
@@ -130,12 +135,20 @@ export const saveCampaignData = async (
     for (let i = 0; i < csvData.length; i++) {
       try {
         const dbRow = csvRowToDbFormat(csvData[i], uploadTimestamp)
+        console.log(`🔍 Row ${i + 1} converted - timestamp: ${dbRow.uploaded_at}`)
         validDbRows.push(dbRow)
       } catch (error) {
         console.warn(`⚠️ Skipping invalid row ${i + 1}:`, error instanceof Error ? error.message : error)
         invalidRows.push({ index: i + 1, row: csvData[i], error: error instanceof Error ? error.message : 'Unknown error' })
       }
     }
+
+    console.log('🔍 Sample of valid DB rows with timestamps:',
+      validDbRows.slice(0, 3).map(row => ({
+        campaign: row.campaign_order_name?.substring(0, 50),
+        timestamp: row.uploaded_at
+      }))
+    );
 
     if (validDbRows.length === 0) {
       return {
@@ -196,6 +209,12 @@ export const saveCampaignData = async (
       // Final validation: ensure all batch data is JSON-serializable and clean
       try {
         const sanitizedBatch = batch.map((row, idx) => {
+          console.log(`🔍 Processing row ${idx + 1} in batch ${batchNum}:`, {
+            originalTimestamp: row.uploaded_at,
+            uploadTimestamp: uploadTimestamp,
+            willUse: row.uploaded_at || uploadTimestamp
+          });
+
           // Deep clone and validate each field
           const cleanRow = {
             date: String(row.date).slice(0, 20), // Limit date length
@@ -210,11 +229,13 @@ export const saveCampaignData = async (
             cpc: row.cpc ? Number(row.cpc) : null,
             roas: row.roas ? Number(row.roas) : null,
             data_source: 'csv_upload', // Hardcode to avoid any issues
-            user_session_id: `session_${Date.now()}`, // Simplified session ID
-            uploaded_at: new Date().toISOString(), // Fresh timestamp
+            user_session_id: row.user_session_id || `session_${Date.now()}`, // Preserve original session ID
+            uploaded_at: uploadTimestamp, // ALWAYS use the shared upload timestamp
             orangellow_corrected: Boolean(row.orangellow_corrected),
             original_spend: row.original_spend ? Number(row.original_spend) : null
           }
+
+          console.log(`🔍 Final clean row timestamp: ${cleanRow.uploaded_at}`);
 
           // Ensure JSON serialization works
           JSON.stringify(cleanRow)

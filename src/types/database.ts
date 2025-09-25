@@ -160,6 +160,10 @@ export interface CampaignCSVRow {
   ROAS?: number
   _ORANGELLOW_CORRECTED?: boolean
   _ORIGINAL_SPEND?: number
+  // Metadata fields for data tracking
+  uploaded_at?: string
+  user_session_id?: string
+  data_source?: string
 }
 
 // SQL for creating the table (for reference/documentation)

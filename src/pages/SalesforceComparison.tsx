@@ -36,6 +36,51 @@ const SalesforceComparisonContent = () => {
     type: 'salesforce' | 'dashboard';
   }>({ open: false, ioNumber: "", type: 'salesforce' });
 
+  // Calculate data freshness timestamps
+  const dataFreshness = useMemo(() => {
+    let salesforceLastUpdated = null;
+    let dashboardLastUpdated = null;
+
+    if (salesforceData.length > 0) {
+      const salesforceTimestamps = salesforceData
+        .map(row => row.uploaded_at)
+        .filter(timestamp => timestamp)
+        .sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+      salesforceLastUpdated = salesforceTimestamps[0] || null;
+    }
+
+    if (campaignData.length > 0) {
+      const dashboardTimestamps = campaignData
+        .map(row => row.uploaded_at)
+        .filter(timestamp => timestamp)
+        .sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+      dashboardLastUpdated = dashboardTimestamps[0] || null;
+    }
+
+    return { salesforceLastUpdated, dashboardLastUpdated };
+  }, [salesforceData, campaignData]);
+
+  // Format timestamp to Pacific Time
+  const formatTimestamp = (timestamp: string | null): string => {
+    if (!timestamp) return 'No data uploaded';
+
+    try {
+      const date = new Date(timestamp);
+      return date.toLocaleString('en-US', {
+        timeZone: 'America/Los_Angeles',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZoneName: 'short'
+      });
+    } catch (error) {
+      return 'Invalid date';
+    }
+  };
+
   // Load existing data on component mount
   useEffect(() => {
     const loadExistingData = async () => {
@@ -421,7 +466,21 @@ const SalesforceComparisonContent = () => {
       </div>
 
       {/* Content */}
-      <div className="mt-6 space-y-6">
+      <div className="mt-2 space-y-2">
+        {/* Data Freshness Notice */}
+        {(salesforceData.length > 0 || campaignData.length > 0) && (
+          <div className="text-xs text-gray-500 flex items-center justify-end gap-4 px-1">
+            <span>Data Last Updated:</span>
+            <div className="flex items-center gap-1">
+              <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+              <span>Salesforce: {formatTimestamp(dataFreshness.salesforceLastUpdated)}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
+              <span>Dashboard: {formatTimestamp(dataFreshness.dashboardLastUpdated)}</span>
+            </div>
+          </div>
+        )}
 
         {/* Comparison Table */}
         <Card>
