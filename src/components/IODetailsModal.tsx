@@ -89,20 +89,35 @@ const IODetailsModal: React.FC<IODetailsModalProps> = ({
     individualIONumbers.includes(row.mjaa_number)
   );
 
-  // Get MJAA filenames with their forecasts
+  // Get current month for filtering Salesforce data
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  // Filter Salesforce records to current month only
+  const currentMonthSalesforceRecords = matchingSalesforceRecords.filter(row =>
+    row.month === currentMonth
+  );
+
+  console.log(`Debug - IO: ${ioNumber}, Current Month: ${currentMonth}`);
+  console.log(`Debug - All matching Salesforce records:`, matchingSalesforceRecords);
+  console.log(`Debug - Current month Salesforce records:`, currentMonthSalesforceRecords);
+
+  // Get MJAA filenames with their current month forecasts
   const mjaaFilenamesWithForecast = [...new Set(
-    matchingSalesforceRecords
+    currentMonthSalesforceRecords
       .map(row => row.mjaa_filename)
       .filter(filename => filename)
       .flatMap(filename => filename?.split(', ') || [])
   )].map(filename => {
-    // Find the record that contains this filename to get the forecast
-    const record = matchingSalesforceRecords.find(row =>
+    // Find the record that contains this filename to get the current month revenue
+    const record = currentMonthSalesforceRecords.find(row =>
       row.mjaa_filename?.includes(filename)
     );
+    const revenue = record?.monthly_revenue || 0;
+    console.log(`Debug - Filename: ${filename}, Record:`, record, `Revenue: ${revenue}, Current Month: ${currentMonth}`);
     return {
       filename,
-      currentMonthForecast: record?.current_month_forecast || 0
+      currentMonthForecast: revenue
     };
   });
 
@@ -191,7 +206,7 @@ const IODetailsModal: React.FC<IODetailsModalProps> = ({
                         key={index}
                         className="p-3 bg-green-50 border border-green-200 rounded-lg flex justify-between items-center"
                       >
-                        <p className="font-mono text-xs text-green-900 flex-1 mr-4 truncate">
+                        <p className="text-sm text-green-900 flex-1 mr-4 truncate" style={{fontFamily: 'inherit', fontWeight: '500'}}>
                           {item.filename}
                         </p>
                         <p className="font-semibold text-sm text-green-700 whitespace-nowrap">
@@ -203,7 +218,7 @@ const IODetailsModal: React.FC<IODetailsModalProps> = ({
                   {mjaaFilenamesWithForecast.length > 1 && (
                     <div className="mt-4 pt-3 border-t border-green-200">
                       <div className="flex justify-between items-center p-3 bg-green-100 border border-green-300 rounded-lg">
-                        <p className="font-semibold text-sm text-green-800">Total Forecast:</p>
+                        <p className="font-semibold text-sm text-green-800">Total Revenue:</p>
                         <p className="font-bold text-base text-green-700">
                           ${totalMjaaForecast.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>

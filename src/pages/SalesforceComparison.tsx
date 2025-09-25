@@ -12,6 +12,7 @@ import { getIOForecastsForDateRange } from "@/utils/ioForecastAggregation";
 import { findMismatchedIOs, extractAllIONumbers, extractIONumber, findIOMatches, extractIONumbers, getIODisplayFormat } from "@/utils/ioNumberExtraction";
 import IODetailsModal from "@/components/IODetailsModal";
 import { CampaignFilterProvider, useCampaignFilter } from "@/contexts/CampaignFilterContext";
+import { parseDateString } from "@/lib/utils";
 
 const SalesforceComparisonContent = () => {
   const navigate = useNavigate();
@@ -266,18 +267,36 @@ const SalesforceComparisonContent = () => {
     setMismatchDetailsModal({ open: true, ioNumber, type });
   };
 
-  // Get MJAA filenames for a specific IO number
-  const getMJAAFilenames = (ioNumber: string) => {
+  // Get MJAA filenames with current month revenue for a specific IO number
+  const getMJAAFilenamesWithRevenue = (ioNumber: string) => {
     try {
-      return [...new Set(
-        salesforceData
-          .filter(row => row.mjaa_number === ioNumber)
-          .map(row => row.mjaa_filename)
-          .filter(filename => filename)
-          .flatMap(filename => filename?.split(', ') || [])
-      )];
+      const now = new Date();
+      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+      // Get current month records for this IO
+      const currentMonthRecords = salesforceData.filter(row =>
+        row.mjaa_number === ioNumber && row.month === currentMonth
+      );
+
+      // Get unique filenames with their revenue
+      const filenameMap = new Map();
+      currentMonthRecords.forEach(row => {
+        if (row.mjaa_filename) {
+          const filenames = row.mjaa_filename.split(', ');
+          filenames.forEach(filename => {
+            if (filename.trim()) {
+              filenameMap.set(filename.trim(), (filenameMap.get(filename.trim()) || 0) + (row.monthly_revenue || 0));
+            }
+          });
+        }
+      });
+
+      return Array.from(filenameMap.entries()).map(([filename, revenue]) => ({
+        filename,
+        revenue
+      }));
     } catch (error) {
-      console.error('Error getting MJAA filenames:', error);
+      console.error('Error getting MJAA filenames with revenue:', error);
       return [];
     }
   };
@@ -309,21 +328,50 @@ const SalesforceComparisonContent = () => {
         uniqueCampaigns.add(campaignName);
       });
 
-      // Get IO forecasts to calculate individual campaign forecasts
-      const ioForecasts = getIOForecastsForDateRange(campaignData, undefined);
-      const ioForecastMap = new Map(ioForecasts.map(io => [io.ioNumber, io]));
+      // Calculate individual campaign forecasts
+      const calculateForecastForCampaign = (campaignName: string): number => {
+        const campaignRows = campaignData.filter(row => {
+          const rowCampaignName = row["CAMPAIGN ORDER NAME"] || row.campaign_order_name || "";
+          return rowCampaignName === campaignName;
+        });
 
-      // For each unique campaign, calculate its forecast portion
-      const campaignsWithForecast = Array.from(uniqueCampaigns).map(campaignName => {
-        // Find the IO forecast that matches this campaign's IO pattern
-        const campaignIOPattern = extractIONumber(campaignName) || extractIONumbers(campaignName)[0];
-        const forecast = ioForecastMap.get(campaignIOPattern);
+        const currentDate = new Date();
+        const currentMonth = currentDate.getMonth();
+        const currentYear = currentDate.getFullYear();
+        const currentMonthStart = new Date(currentYear, currentMonth, 1);
+        const daysElapsed = currentDate.getDate();
+        const totalDaysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
 
-        return {
-          name: campaignName,
-          currentMonthForecast: forecast?.forecastSpend || 0
-        };
-      });
+        let mtdSpend = 0;
+        campaignRows.forEach(row => {
+          if (!row.DATE || row.DATE === 'Totals') return;
+          const rowDate = parseDateString(row.DATE);
+          if (!rowDate) return;
+
+          if (rowDate >= currentMonthStart && rowDate <= currentDate) {
+            mtdSpend += Number(row.SPEND) || 0;
+          }
+        });
+
+        if (daysElapsed === 0 || mtdSpend === 0) return mtdSpend;
+
+        const dailyAvgSpend = mtdSpend / daysElapsed;
+        const remainingDays = totalDaysInMonth - daysElapsed;
+        const projectedSpend = dailyAvgSpend * remainingDays;
+
+        return mtdSpend + projectedSpend;
+      };
+
+      // For each unique campaign, calculate its individual forecast and filter out zero amounts
+      const campaignsWithForecast = Array.from(uniqueCampaigns)
+        .map(campaignName => {
+          const forecast = calculateForecastForCampaign(campaignName);
+          return {
+            name: campaignName,
+            currentMonthForecast: forecast
+          };
+        })
+        .filter(campaign => campaign.currentMonthForecast > 0);
 
       return campaignsWithForecast;
     } catch (error) {
@@ -379,13 +427,15 @@ const SalesforceComparisonContent = () => {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>Revenue Comparison - Matched IOs</CardTitle>
-              <div className="flex items-center gap-2">
+              <div className="flex items-end gap-3">
+                <CardTitle>Forecast Comparison</CardTitle>
                 {comparisonData.matchedIOs.length > 0 && (
-                  <span className="text-sm text-gray-600">
-                    {comparisonData.matchedIOs.length} matches
+                  <span className="text-sm text-gray-600 translate-y-0.5">
+                    {comparisonData.matchedIOs.length} Matched IOs
                   </span>
                 )}
+              </div>
+              <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
@@ -413,117 +463,263 @@ const SalesforceComparisonContent = () => {
                 No matching IO numbers found between Salesforce and campaign data
               </div>
             ) : (
+              <>
+                {/* Forecast Summary Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  {/* Salesforce Forecast Card */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base">Salesforce Forecast</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        <div className="flex flex-col">
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm font-medium text-gray-500">Current Month</div>
+                            <div className="text-2xl font-bold text-green-600">
+                              ${(totals.currentMonthSF + mismatchTotals.salesforceOnly.currentMonthForecast).toLocaleString()}
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between mt-2">
+                            <div className="text-sm text-gray-500">vs Last Month</div>
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm text-gray-600">
+                                ${(totals.lastMonthSF + mismatchTotals.salesforceOnly.lastMonthForecast).toLocaleString()}
+                              </div>
+                              {(() => {
+                                const currentTotal = totals.currentMonthSF + mismatchTotals.salesforceOnly.currentMonthForecast;
+                                const lastTotal = totals.lastMonthSF + mismatchTotals.salesforceOnly.lastMonthForecast;
+                                const change = currentTotal - lastTotal;
+                                const percentage = lastTotal > 0 ? (change / lastTotal) * 100 : 0;
+                                return change !== 0 ? (
+                                  <div className={`text-xs px-2 py-1 rounded-full ${
+                                    change > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                  }`}>
+                                    {change > 0 ? '+' : ''}{percentage.toFixed(1)}%
+                                  </div>
+                                ) : null;
+                              })()}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="pt-3 border-t space-y-2">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-600">Matched IOs:</span>
+                            <span className="font-medium">${totals.currentMonthSF.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-600">Unmatched IOs:</span>
+                            <span className="font-medium">
+                              ${mismatchTotals.salesforceOnly.currentMonthForecast.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Dashboard Forecast Card */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base">Dashboard Forecast</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        <div className="flex flex-col">
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm font-medium text-gray-500">Current Month</div>
+                            <div className="text-2xl font-bold text-blue-600">
+                              ${Math.round(totals.currentMonthForecast + mismatchTotals.dashboardOnly.currentMonthForecast).toLocaleString()}
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between mt-2">
+                            <div className="text-sm text-gray-500">vs Last Month</div>
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm text-gray-600">
+                                ${Math.round(totals.lastMonthDashboard + mismatchTotals.dashboardOnly.lastMonthSpend).toLocaleString()}
+                              </div>
+                              {(() => {
+                                const currentTotal = totals.currentMonthForecast + mismatchTotals.dashboardOnly.currentMonthForecast;
+                                const lastTotal = totals.lastMonthDashboard + mismatchTotals.dashboardOnly.lastMonthSpend;
+                                const change = currentTotal - lastTotal;
+                                const percentage = lastTotal > 0 ? (change / lastTotal) * 100 : 0;
+                                return change !== 0 ? (
+                                  <div className={`text-xs px-2 py-1 rounded-full ${
+                                    change > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                  }`}>
+                                    {change > 0 ? '+' : ''}{percentage.toFixed(1)}%
+                                  </div>
+                                ) : null;
+                              })()}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="pt-3 border-t space-y-2">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-600">Matched IOs:</span>
+                            <span className="font-medium">${Math.round(totals.currentMonthForecast).toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-600">Unmatched IOs:</span>
+                            <span className="font-medium">
+                              ${Math.round(mismatchTotals.dashboardOnly.currentMonthForecast).toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Discrepancies Card */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base">Discrepancies</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        <div className="flex flex-col">
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm font-medium text-gray-500">Current Month</div>
+                            <div className={`text-2xl font-bold ${
+                              ((totals.currentMonthSF + mismatchTotals.salesforceOnly.currentMonthForecast) -
+                               (totals.currentMonthForecast + mismatchTotals.dashboardOnly.currentMonthForecast)) >= 0 ? 'text-red-600' : 'text-green-600'
+                            }`}>
+                              ${Math.abs((totals.currentMonthSF + mismatchTotals.salesforceOnly.currentMonthForecast) -
+                                        (totals.currentMonthForecast + mismatchTotals.dashboardOnly.currentMonthForecast)).toLocaleString()}
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between mt-2">
+                            <div className="text-sm text-gray-500">vs Last Month</div>
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm text-gray-600">
+                                ${Math.abs((totals.lastMonthSF + mismatchTotals.salesforceOnly.lastMonthForecast) -
+                                          (totals.lastMonthDashboard + mismatchTotals.dashboardOnly.lastMonthSpend)).toLocaleString()}
+                              </div>
+                              {(() => {
+                                const currentDiscrepancy = Math.abs((totals.currentMonthSF + mismatchTotals.salesforceOnly.currentMonthForecast) -
+                                                                   (totals.currentMonthForecast + mismatchTotals.dashboardOnly.currentMonthForecast));
+                                const lastDiscrepancy = Math.abs((totals.lastMonthSF + mismatchTotals.salesforceOnly.lastMonthForecast) -
+                                                                 (totals.lastMonthDashboard + mismatchTotals.dashboardOnly.lastMonthSpend));
+                                const change = currentDiscrepancy - lastDiscrepancy;
+                                const percentage = lastDiscrepancy > 0 ? (change / lastDiscrepancy) * 100 : 0;
+                                return change !== 0 ? (
+                                  <div className={`text-xs px-2 py-1 rounded-full ${
+                                    change > 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                                  }`}>
+                                    {change > 0 ? '+' : ''}{percentage.toFixed(1)}%
+                                  </div>
+                                ) : null;
+                              })()}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="pt-3 border-t space-y-2">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-600">Matched IOs:</span>
+                            <span className={`font-medium ${
+                              (totals.currentMonthSF - totals.currentMonthForecast) >= 0 ? 'text-red-600' : 'text-green-600'
+                            }`}>
+                              ${Math.abs(totals.currentMonthSF - totals.currentMonthForecast).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-600">Unmatched IOs:</span>
+                            <span className={`font-medium ${
+                              (mismatchTotals.salesforceOnly.currentMonthForecast - mismatchTotals.dashboardOnly.currentMonthForecast) >= 0 ? 'text-red-600' : 'text-green-600'
+                            }`}>
+                              ${Math.abs(mismatchTotals.salesforceOnly.currentMonthForecast - mismatchTotals.dashboardOnly.currentMonthForecast).toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
               <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[160px]">
+                {/* Sticky Header */}
+                <div className="sticky top-0 z-50 bg-white border-b">
+                  <div className="grid grid-cols-7 gap-0 py-3 px-4 text-sm font-medium text-muted-foreground">
+                    <div className="w-[160px]">
+                      <button
+                        onClick={() => handleSort('ioNumber')}
+                        className="text-left flex items-center gap-1 hover:bg-gray-50 py-1 px-1 rounded transition-colors"
+                      >
+                        <span>IO Number</span>
+                        {sortConfig.key === 'ioNumber' ? (
+                          sortConfig.direction === 'asc' ? (
+                            <ChevronUp className="h-3 w-3" />
+                          ) : (
+                            <ChevronDown className="h-3 w-3" />
+                          )
+                        ) : (
+                          <div className="h-3 w-3" />
+                        )}
+                      </button>
+                    </div>
+                    <div className="w-[140px]">
+                      <button
+                        onClick={() => handleSort('advertiser')}
+                        className="text-left flex items-center gap-1 hover:bg-gray-50 py-1 px-1 rounded transition-colors"
+                      >
+                        <span>Advertiser</span>
+                        {sortConfig.key === 'advertiser' ? (
+                          sortConfig.direction === 'asc' ? (
+                            <ChevronUp className="h-3 w-3" />
+                          ) : (
+                            <ChevronDown className="h-3 w-3" />
+                          )
+                        ) : (
+                          <div className="h-3 w-3" />
+                        )}
+                      </button>
+                    </div>
+                    <div className="text-center">Current Month<br/>Salesforce Revenue</div>
+                    <div className="text-center">Current Month<br/>Dashboard Spend</div>
+                    <div className="text-center">Current Month<br/>Dashboard Forecast</div>
+                    <div className="text-center">Last Month<br/>Salesforce Revenue</div>
+                    <div className="text-center">Last Month<br/>Dashboard Spend</div>
+                  </div>
+                </div>
+
+                {/* Scrollable Table Body */}
+                <div className="max-h-[600px] overflow-y-auto">
+                  {sortedMatchedIOs.map((io) => (
+                    <div key={io.ioNumber} className="grid grid-cols-7 gap-0 py-3 px-4 border-b hover:bg-gray-50">
+                      <div className="w-[160px] text-sm">
                         <button
-                          onClick={() => handleSort('ioNumber')}
-                          className="text-left flex items-end justify-start h-full w-full hover:bg-gray-50 py-2 px-1 rounded transition-colors"
+                          onClick={() => handleIOClick(io.ioNumber)}
+                          className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
                         >
-                          <div className="flex items-center gap-1 whitespace-nowrap text-sm">
-                            <span>IO Number</span>
-                            {sortConfig.key === 'ioNumber' ? (
-                              sortConfig.direction === 'asc' ? (
-                                <ChevronUp className="h-3 w-3" />
-                              ) : (
-                                <ChevronDown className="h-3 w-3" />
-                              )
-                            ) : (
-                              <div className="h-3 w-3" />
-                            )}
-                          </div>
+                          {io.ioNumber}
                         </button>
-                      </TableHead>
-                      <TableHead className="w-[140px]">
-                        <button
-                          onClick={() => handleSort('advertiser')}
-                          className="text-left flex items-end h-full w-full hover:bg-gray-50 py-2 px-1 rounded transition-colors"
-                        >
-                          <div className="flex items-center gap-1 text-sm">
-                            <span>Advertiser</span>
-                            {sortConfig.key === 'advertiser' ? (
-                              sortConfig.direction === 'asc' ? (
-                                <ChevronUp className="h-3 w-3" />
-                              ) : (
-                                <ChevronDown className="h-3 w-3" />
-                              )
-                            ) : (
-                              <div className="h-3 w-3" />
-                            )}
-                          </div>
-                        </button>
-                      </TableHead>
-                      <TableHead className="text-center">
-                        <div className="text-center text-sm">
-                          <div>Current Month</div>
-                          <div>Salesforce Forecast</div>
+                      </div>
+                      <div className="w-[140px] text-sm">
+                        <div className="truncate" title={io.advertiser}>
+                          {io.advertiser || "—"}
                         </div>
-                      </TableHead>
-                      <TableHead className="text-center">
-                        <div className="text-center text-sm">
-                          <div>Current Month</div>
-                          <div>Dashboard Spend</div>
-                        </div>
-                      </TableHead>
-                      <TableHead className="text-center">
-                        <div className="text-center text-sm">
-                          <div>Current Month</div>
-                          <div>Dashboard Forecast</div>
-                        </div>
-                      </TableHead>
-                      <TableHead className="text-center">
-                        <div className="text-center text-sm">
-                          <div>Last Month</div>
-                          <div>Salesforce Forecast</div>
-                        </div>
-                      </TableHead>
-                      <TableHead className="text-center">
-                        <div className="text-center text-sm">
-                          <div>Last Month</div>
-                          <div>Dashboard Spend</div>
-                        </div>
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {sortedMatchedIOs.map((io) => (
-                      <TableRow key={io.ioNumber}>
-                        <TableCell className="font-medium text-left text-sm">
-                          <button
-                            onClick={() => handleIOClick(io.ioNumber)}
-                            className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
-                          >
-                            {io.ioNumber}
-                          </button>
-                        </TableCell>
-                        <TableCell className="text-left text-sm">
-                          <div className="max-w-[140px] truncate" title={io.advertiser}>
-                            {io.advertiser || "—"}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-center text-sm">${io.currentMonthSF.toLocaleString()}</TableCell>
-                        <TableCell className="text-center text-sm">${Math.round(io.currentMonthDashboard).toLocaleString()}</TableCell>
-                        <TableCell className="text-center text-sm">${Math.round(io.currentMonthForecast).toLocaleString()}</TableCell>
-                        <TableCell className="text-center text-sm">${io.lastMonthSF.toLocaleString()}</TableCell>
-                        <TableCell className="text-center text-sm">${Math.round(io.lastMonthDashboard).toLocaleString()}</TableCell>
-                      </TableRow>
-                    ))}
-                    {comparisonData.matchedIOs.length > 0 && (
-                      <TableRow className="border-t-2 border-gray-300 bg-gray-50 font-semibold">
-                        <TableCell className="text-left font-bold text-sm">Total</TableCell>
-                        <TableCell className="text-left font-bold text-sm">—</TableCell>
-                        <TableCell className="text-center font-bold text-sm">${totals.currentMonthSF.toLocaleString()}</TableCell>
-                        <TableCell className="text-center font-bold text-sm">${Math.round(totals.currentMonthDashboard).toLocaleString()}</TableCell>
-                        <TableCell className="text-center font-bold text-sm">${Math.round(totals.currentMonthForecast).toLocaleString()}</TableCell>
-                        <TableCell className="text-center font-bold text-sm">${totals.lastMonthSF.toLocaleString()}</TableCell>
-                        <TableCell className="text-center font-bold text-sm">${Math.round(totals.lastMonthDashboard).toLocaleString()}</TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                      </div>
+                      <div className="text-center text-sm">${io.currentMonthSF.toLocaleString()}</div>
+                      <div className="text-center text-sm">${Math.round(io.currentMonthDashboard).toLocaleString()}</div>
+                      <div className="text-center text-sm">${Math.round(io.currentMonthForecast).toLocaleString()}</div>
+                      <div className="text-center text-sm">${io.lastMonthSF.toLocaleString()}</div>
+                      <div className="text-center text-sm">${Math.round(io.lastMonthDashboard).toLocaleString()}</div>
+                    </div>
+                  ))}
+                  {comparisonData.matchedIOs.length > 0 && (
+                    <div className="grid grid-cols-7 gap-0 py-3 px-4 border-t-2 border-gray-300 bg-gray-50 font-semibold">
+                      <div className="w-[160px] text-sm font-bold">Total</div>
+                      <div className="w-[140px] text-sm font-bold">—</div>
+                      <div className="text-center text-sm font-bold">${totals.currentMonthSF.toLocaleString()}</div>
+                      <div className="text-center text-sm font-bold">${Math.round(totals.currentMonthDashboard).toLocaleString()}</div>
+                      <div className="text-center text-sm font-bold">${Math.round(totals.currentMonthForecast).toLocaleString()}</div>
+                      <div className="text-center text-sm font-bold">${totals.lastMonthSF.toLocaleString()}</div>
+                      <div className="text-center text-sm font-bold">${Math.round(totals.lastMonthDashboard).toLocaleString()}</div>
+                    </div>
+                  )}
+                </div>
               </div>
+              </>
             )}
           </CardContent>
         </Card>
@@ -725,23 +921,39 @@ const SalesforceComparisonContent = () => {
                     MJAA Filenames from Salesforce
                   </h4>
                   {(() => {
-                    const mjaaFilenames = getMJAAFilenames(mismatchDetailsModal.ioNumber);
+                    const mjaaFilenamesWithRevenue = getMJAAFilenamesWithRevenue(mismatchDetailsModal.ioNumber);
+                    const totalRevenue = mjaaFilenamesWithRevenue.reduce((sum, item) => sum + item.revenue, 0);
 
-                    return mjaaFilenames.length === 0 ? (
-                      <p className="text-gray-500 text-sm">No MJAA filenames found for this IO number</p>
+                    return mjaaFilenamesWithRevenue.length === 0 ? (
+                      <p className="text-gray-500 text-sm">No MJAA filenames found for this IO number in current month</p>
                     ) : (
-                      <div className="space-y-3">
-                        {mjaaFilenames.map((filename, index) => (
-                          <div
-                            key={index}
-                            className="p-4 bg-red-50 border border-red-200 rounded-lg"
-                          >
-                            <p className="font-mono text-sm text-red-900">
-                              {filename}
-                            </p>
+                      <>
+                        <div className="space-y-3">
+                          {mjaaFilenamesWithRevenue.map((item, index) => (
+                            <div
+                              key={index}
+                              className="p-3 bg-red-50 border border-red-200 rounded-lg flex justify-between items-center"
+                            >
+                              <p className="font-medium text-sm text-red-900 flex-1 mr-4 truncate">
+                                {item.filename}
+                              </p>
+                              <p className="font-semibold text-sm text-red-700 whitespace-nowrap">
+                                ${item.revenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                        {mjaaFilenamesWithRevenue.length > 1 && (
+                          <div className="mt-4 pt-3 border-t border-red-200">
+                            <div className="flex justify-between items-center p-3 bg-red-100 border border-red-300 rounded-lg">
+                              <p className="font-semibold text-sm text-red-800">Total Revenue:</p>
+                              <p className="font-bold text-base text-red-700">
+                                ${totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </p>
+                            </div>
                           </div>
-                        ))}
-                      </div>
+                        )}
+                      </>
                     );
                   })()}
                 </div>
@@ -761,41 +973,33 @@ const SalesforceComparisonContent = () => {
                     const totalForecast = campaignsWithForecast.reduce((sum, campaign) => sum + campaign.currentMonthForecast, 0);
 
                     return (
-                      <div className="space-y-3">
-                        {campaignsWithForecast.map((campaign, index) => (
-                          <div
-                            key={index}
-                            className="p-4 bg-amber-50 border border-amber-200 rounded-lg"
-                          >
-                            <div className="flex justify-between items-start">
-                              <p className="font-mono text-sm text-amber-900 flex-1 mr-4">
+                      <>
+                        <div className="space-y-3">
+                          {campaignsWithForecast.map((campaign, index) => (
+                            <div
+                              key={index}
+                              className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex justify-between items-center"
+                            >
+                              <p className="font-medium text-sm text-amber-900 flex-1 mr-4 truncate">
                                 {campaign.name}
                               </p>
-                              <div className="text-right">
-                                <span className="text-xs text-amber-700 block">Current Month Forecast</span>
-                                <span className="font-bold text-amber-800">
-                                  ${Math.round(campaign.currentMonthForecast).toLocaleString()}
-                                </span>
-                              </div>
+                              <p className="font-semibold text-sm text-amber-700 whitespace-nowrap">
+                                ${campaign.currentMonthForecast.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </p>
                             </div>
-                          </div>
-                        ))}
-
-                        {/* Total Row */}
-                        <div className="p-4 bg-amber-100 border-2 border-amber-300 rounded-lg">
-                          <div className="flex justify-between items-center">
-                            <span className="font-bold text-amber-900">
-                              Total ({campaignsWithForecast.length} campaigns)
-                            </span>
-                            <div className="text-right">
-                              <span className="text-xs text-amber-700 block">Total Current Month Forecast</span>
-                              <span className="font-bold text-lg text-amber-800">
-                                ${Math.round(totalForecast).toLocaleString()}
-                              </span>
-                            </div>
-                          </div>
+                          ))}
                         </div>
-                      </div>
+                        {campaignsWithForecast.length > 1 && (
+                          <div className="mt-4 pt-3 border-t border-amber-200">
+                            <div className="flex justify-between items-center p-3 bg-amber-100 border border-amber-300 rounded-lg">
+                              <p className="font-semibold text-sm text-amber-800">Total Current Month Forecast:</p>
+                              <p className="font-bold text-base text-amber-700">
+                                ${totalForecast.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </>
                     );
                   })()}
                 </div>

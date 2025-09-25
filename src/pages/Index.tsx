@@ -706,10 +706,6 @@ const ForecastContent = ({
               <BarChart3 className="h-4 w-4" />
               Salesforce Comparison
             </Button>
-            {/* Temporary debug link */}
-            <a href="/salesforce-comparison" className="text-xs text-blue-600 underline">
-              (Direct Link)
-            </a>
             <DateRangePicker
               dateRange={dateRange}
               onDateRangeChange={onDateRangeChange}
