@@ -522,24 +522,24 @@ const ForecastTab = ({ data }: ForecastTabProps) => {
                   dot={false}
                 />
                 
-                {/* Projected data lines (dotted) */}
-                <Line 
-                  type="monotone" 
-                  dataKey="directForecastProjected" 
-                  stroke="#3b82f6" 
+                {/* Projected data lines (dotted) - hidden from legend */}
+                <Line
+                  type="monotone"
+                  dataKey="directForecastProjected"
+                  stroke="#3b82f6"
                   strokeWidth={2}
                   strokeDasharray="5 5"
-                  name="MediaJel Direct"
+                  legendType="none"
                   connectNulls={false}
                   dot={false}
                 />
-                <Line 
-                  type="monotone" 
-                  dataKey="channelForecastProjected" 
-                  stroke="#10b981" 
+                <Line
+                  type="monotone"
+                  dataKey="channelForecastProjected"
+                  stroke="#10b981"
                   strokeWidth={2}
                   strokeDasharray="5 5"
-                  name="Channel Partners"
+                  legendType="none"
                   connectNulls={false}
                   dot={false}
                 />
