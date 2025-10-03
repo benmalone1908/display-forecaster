@@ -27,7 +27,6 @@ import PacingTable from "@/components/PacingTable";
 import PacingMetrics from "@/components/PacingMetrics";
 import CampaignHealthTab from "@/components/CampaignHealthTab";
 import { Pacing2 } from "@/components/Pacing2";
-import EnhancedPdfExportButton from "@/components/ui/enhanced-pdf-export-button";
 import CustomReportBuilder from "@/components/CustomReportBuilder";
 import StatusTab from "@/components/StatusTab";
 import ForecastTab from "@/components/ForecastTab";
@@ -35,7 +34,6 @@ import { applySpendCorrections, getSpendCorrectionSummary } from "@/utils/orange
 import { applyManualCpmCorrections, getManualCpmCorrectionSummary } from "@/utils/manualCpmCalculations";
 import { saveCampaignData, loadAllCampaignData, hasAnyData } from "@/utils/dataStorage";
 import { previewRecalculation, applyRecalculation, canRecalculate, RecalculationPreview } from "@/utils/dataRecalculation";
-// import RecalculationModal from "@/components/RecalculationModal";
 import { useAuth } from "@/contexts/AuthContext";
 
 type MetricType = 
@@ -540,11 +538,6 @@ const ForecastContent = ({
   onProcessFiles: (uploadedData: any[], pacingData?: any[], contractTermsData?: any[]) => void;
   logout: () => void;
 }) => {
-  // Recalculation state (simplified)
-  // const [isRecalculationModalOpen, setIsRecalculationModalOpen] = useState(false);
-  // const [recalculationPreview, setRecalculationPreview] = useState<RecalculationPreview | null>(null);
-  // const [isLoadingPreview, setIsLoadingPreview] = useState(false);
-  // const [isApplyingRecalculation, setIsApplyingRecalculation] = useState(false);
   // Calculate available date range from data to constrain date picker
   const availableDateRange = useMemo(() => {
     if (!data || data.length === 0) {
@@ -642,34 +635,6 @@ const ForecastContent = ({
       toast.error(`Failed to generate recalculation preview: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
-
-  // const handleConfirmRecalculation = async () => {
-  //   setIsApplyingRecalculation(true);
-
-  //   try {
-  //     const result = await applyRecalculation();
-  //     if (result.success && result.updatedData) {
-  //       toast.success(result.message);
-  //       onDataLoaded(result.updatedData); // Update the UI with new data
-  //       setIsRecalculationModalOpen(false);
-  //       setRecalculationPreview(null);
-  //     } else {
-  //       toast.error(result.message);
-  //     }
-  //   } catch (error) {
-  //     console.error('Error applying recalculation:', error);
-  //     toast.error('Failed to apply recalculation');
-  //   } finally {
-  //     setIsApplyingRecalculation(false);
-  //   }
-  // };
-
-  // const handleCancelRecalculation = () => {
-  //   setIsRecalculationModalOpen(false);
-  //   setRecalculationPreview(null);
-  //   setIsLoadingPreview(false);
-  //   setIsApplyingRecalculation(false);
-  // };
 
   const getFilteredData = () => {
     let filtered = data;
@@ -810,17 +775,6 @@ const ForecastContent = ({
           <ForecastTab data={filteredData} />
         )}
       </div>
-
-      {/* Recalculation Modal - temporarily disabled */}
-      {/* <RecalculationModal
-        open={isRecalculationModalOpen}
-        onOpenChange={setIsRecalculationModalOpen}
-        preview={recalculationPreview}
-        isLoading={isLoadingPreview}
-        onConfirm={handleConfirmRecalculation}
-        onCancel={handleCancelRecalculation}
-        isApplying={isApplyingRecalculation}
-      /> */}
     </>
   );
 };
@@ -962,7 +916,7 @@ const Index = () => {
     }
   }, [data]);
 
-  const handleDataLoaded = (uploadedData: any[]) => {
+  const handleDataLoaded = async (uploadedData: any[]) => {
     try {
       if (!Array.isArray(uploadedData) || uploadedData.length === 0) {
         toast.error("Invalid data format received");
@@ -1036,77 +990,67 @@ const Index = () => {
         toast.success(`Applied manual CPM corrections: ${adjustmentDetails}`);
       }
       
-      // IMMEDIATE UPDATE: Always update UI first, then handle database save
-      console.log(`📊 Immediately updating UI with ${correctedData.length} rows...`);
-      setData(correctedData);
-      toast.success(`📊 Loaded ${correctedData.length} campaign records`);
-      
-      // Save data to Supabase database and reload complete dataset
-      console.log(`💾 Attempting to save ${correctedData.length} rows to database...`);
-      saveCampaignData(correctedData).then(async (result) => {
-        if (result.success) {
-          console.log(`✅ Database save: ${result.message}`);
-          toast.success(`💾 Saved ${result.savedCount || correctedData.length} records to database`);
-          
-          // Reload ALL data from database to get complete dataset
-          console.log('🔄 Reloading complete dataset from database...');
-          const reloadResult = await loadAllCampaignData();
-          if (reloadResult.success && reloadResult.data.length > 0) {
-            console.log(`📥 Reloaded ${reloadResult.data.length} total records from database`);
-            setData(reloadResult.data);
-            toast.success(`🔄 Dataset updated: now showing ${reloadResult.data.length} total records`);
+      // Save to database then reload complete dataset (includes historical data)
+      console.log(`💾 Saving ${correctedData.length} rows to database...`);
 
-            // Set date range based on COMPLETE dataset from database
-            const allDates = reloadResult.data.map(row => row.DATE).filter(date => date && date !== 'Totals').sort();
-            if (allDates.length > 0) {
-              const parsedDates = allDates
+      const saveAndReload = async () => {
+        try {
+          const result = await saveCampaignData(correctedData);
+
+          if (result.success) {
+            console.log(`✅ Database save: ${result.message}`);
+
+            // Reload complete dataset from database (uploaded + historical)
+            const reloadResult = await loadAllCampaignData();
+
+            if (reloadResult.success && reloadResult.data.length > 0) {
+              console.log(`📥 Loaded ${reloadResult.data.length} total records from database`);
+              setData(reloadResult.data);
+
+              // Set date range based on complete dataset
+              const allDates = reloadResult.data
+                .map(row => row.DATE)
+                .filter(date => date && date !== 'Totals')
                 .map(dateStr => parseDateString(dateStr))
                 .filter(Boolean) as Date[];
 
-              if (parsedDates.length > 0) {
-                parsedDates.sort((a, b) => a.getTime() - b.getTime());
-                const minDate = parsedDates[0];
-                const maxDate = parsedDates[parsedDates.length - 1];
+              if (allDates.length > 0) {
+                allDates.sort((a, b) => a.getTime() - b.getTime());
+                const minDate = allDates[0];
+                const maxDate = allDates[allDates.length - 1];
 
-                console.log(`Setting date range from COMPLETE dataset: ${minDate.toLocaleDateString()} to ${maxDate.toLocaleDateString()}`);
+                console.log(`Setting date range: ${minDate.toLocaleDateString()} to ${maxDate.toLocaleDateString()}`);
 
                 setDateRange({
                   from: minDate,
                   to: maxDate
                 });
               }
+
+              toast.success(`Loaded ${reloadResult.data.length} total campaign records`);
+            } else {
+              // Fallback: use uploaded data only
+              console.warn('⚠️ Could not reload from database, using uploaded data only');
+              setData(correctedData);
+              toast.success(`Loaded ${correctedData.length} campaign records`);
             }
           } else {
-            console.warn('⚠️ Could not reload data from database, keeping uploaded data');
-            // Keep the uploaded data that's already displayed
+            // Database save failed: use uploaded data only
+            console.warn(`⚠️ Database save failed: ${result.message}`);
+            setData(correctedData);
+            toast.error(`Database unavailable: ${result.message}`);
+            toast.success(`Loaded ${correctedData.length} campaign records (not persisted)`);
           }
-        } else {
-          console.warn(`⚠️ Database save failed: ${result.message}`);
-          toast.error(`Database save failed: ${result.message}`);
-          // Keep the uploaded data that's already displayed
+        } catch (error) {
+          // Error during save: use uploaded data only
+          console.error(`❌ Database error:`, error);
+          setData(correctedData);
+          toast.error(`Database error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          toast.success(`Loaded ${correctedData.length} campaign records (not persisted)`);
         }
-      }).catch(error => {
-        console.error(`❌ Database save error:`, error);
-        toast.error(`Database save error: ${error.message}`);
-        // Keep the uploaded data that's already displayed
-      });
+      };
 
-      // Note: Date range will be set after database reload completes to include all historical data
-
-      // Debug info for uploaded data
-      const uploadedDates = correctedData.map(row => row.DATE).filter(date => date && date !== 'Totals').sort();
-      if (uploadedDates.length > 0) {
-        console.log(`Uploaded data date range: ${uploadedDates[0]} to ${uploadedDates[uploadedDates.length-1]}`);
-        console.log(`Total unique uploaded dates: ${new Set(uploadedDates).size}`);
-
-        const dateCounts: Record<string, number> = {};
-        correctedData.forEach(row => {
-          dateCounts[row.DATE] = (dateCounts[row.DATE] || 0) + 1;
-        });
-        console.log("Rows per date:", dateCounts);
-      }
-      
-      toast.success(`Successfully loaded ${correctedData.length} rows of data`);
+      await saveAndReload();
     } catch (error) {
       console.error("Error processing uploaded data:", error);
       toast.error("Failed to process the uploaded data");

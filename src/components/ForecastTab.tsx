@@ -28,15 +28,17 @@ const ForecastTab = ({ data }: ForecastTabProps) => {
   const [sortBy, setSortBy] = useState<'name' | 'change' | 'changeDollar'>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
-  // Use today's date for forecast calculations so current month = September, previous = August
+  // Use today's date for forecast calculations - recalculated when data changes to ensure current month is used
   const currentDate = useMemo(() => {
-    return new Date(); // Use today's date (September 2025)
-  }, []);
+    const now = new Date();
+    console.log('🔍 ForecastTab - Current date for calculations:', now.toDateString(), 'Month:', now.getMonth(), 'Year:', now.getFullYear());
+    return now;
+  }, [data.length]); // Recalculate when data changes
 
   // Generate forecast data
   const forecastData = useMemo(() => {
     if (!data || data.length === 0) return [];
-    
+
     return generateDailyBreakdown(data, currentDate, extractAgencyInfo);
   }, [data, currentDate, extractAgencyInfo]);
 
@@ -52,11 +54,11 @@ const ForecastTab = ({ data }: ForecastTabProps) => {
     const direct = forecastData
       .filter(row => row.agencyType === 'Direct')
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    
+
     const channel = forecastData
       .filter(row => row.agencyType === 'Channel Partner')
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    
+
     return { directData: direct, channelData: channel };
   }, [forecastData]);
 
