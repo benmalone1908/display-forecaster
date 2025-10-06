@@ -274,20 +274,45 @@ const ForecastTab = ({ data }: ForecastTabProps) => {
     console.log('Current month:', currentDate.getMonth(), 'Year:', currentDate.getFullYear());
     console.log('Previous month:', previousMonthNum, 'Year:', previousMonthYear);
     console.log('Previous month data rows:', previousMonthData.length);
+    console.log('TOTAL data rows passed to component:', data.length);
 
     // Debug: Show some sample dates from data
     const sampleDates = data.slice(0, 5).map(row => ({ date: row.DATE, parsed: parseDateString(row.DATE) }));
     console.log('Sample data dates:', sampleDates);
+
+    // Check for duplicates in previousMonthData
+    const pmGroups = {};
+    previousMonthData.forEach(row => {
+      const key = row.DATE + '||' + row['CAMPAIGN ORDER NAME'];
+      if (!pmGroups[key]) pmGroups[key] = 0;
+      pmGroups[key]++;
+    });
+    const pmDuplicates = Object.entries(pmGroups).filter(([k, count]) => count > 1);
+    console.log('🔍 Duplicates in previousMonthData:', pmDuplicates.length);
+    if (pmDuplicates.length > 0) {
+      console.log('🔍 Sample duplicate:', pmDuplicates[0]);
+    }
     
     // Calculate previous month totals by agency type
     let prevDirectSpend = 0;
     let prevChannelSpend = 0;
-    
-    previousMonthData.forEach(row => {
+    let sampleRows = [];
+
+    previousMonthData.forEach((row, index) => {
       const campaignName = row["CAMPAIGN ORDER NAME"] || "";
       const { abbreviation } = extractAgencyInfo(campaignName);
       const agencyType = getAgencyType(abbreviation);
       const spend = Number(row.SPEND) || 0;
+
+      // Collect first 3 rows for debugging
+      if (index < 3) {
+        sampleRows.push({
+          date: row.DATE,
+          campaign: campaignName.substring(0, 30),
+          spend: spend,
+          agencyType: agencyType
+        });
+      }
 
       if (agencyType === 'Direct') {
         prevDirectSpend += spend;
@@ -295,6 +320,9 @@ const ForecastTab = ({ data }: ForecastTabProps) => {
         prevChannelSpend += spend;
       }
     });
+
+    console.log('🔍 Sample previousMonthData rows:', sampleRows);
+    console.log('🔍 previousMonthData total rows:', previousMonthData.length);
 
     console.log('🔍 Previous month spend totals:');
     console.log('Previous Direct spend:', prevDirectSpend);

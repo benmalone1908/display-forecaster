@@ -1,7 +1,7 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { X, FileText, Target } from "lucide-react";
+import { X, FileText, Target, Calculator } from "lucide-react";
 import { extractIONumber, extractIONumbers, getIODisplayFormat } from "@/utils/ioNumberExtraction";
 import { parseDateString } from "@/lib/utils";
 
@@ -126,6 +126,88 @@ const IODetailsModal: React.FC<IODetailsModalProps> = ({
     (sum, item) => sum + item.currentMonthForecast, 0
   );
 
+  // Function to get Salesforce forecast breakdown for an IO
+  const getSalesforceCalculationBreakdown = (ioNumber: string, targetMonth: string): {
+    breakdown: string;
+    total: number;
+    details: Array<{ type: string; amount: number; source: string }>;
+  } => {
+    const ioRecords = salesforceData.filter(row => row.mjaa_number === ioNumber);
+    let total = 0;
+    const details: Array<{ type: string; amount: number; source: string }> = [];
+
+    ioRecords.forEach(record => {
+      const revenue = Number(record.monthly_revenue) || 0;
+      const revenueDate = new Date(record.revenue_date);
+      const revenueDateMonth = `${revenueDate.getFullYear()}-${String(revenueDate.getMonth() + 1).padStart(2, '0')}`;
+
+      // Assume campaign is 30 days total (standard duration)
+      const campaignDuration = 30;
+      const dailyRate = revenue / campaignDuration;
+
+      const daysInRevenueMonth = new Date(revenueDate.getFullYear(), revenueDate.getMonth() + 1, 0).getDate();
+      const remainingDaysInRevenueMonth = daysInRevenueMonth - revenueDate.getDate() + 1;
+
+      // Helper function to check if targetMonth is next month after baseMonth
+      const isNextMonth = (baseMonth: string, targetMonth: string): boolean => {
+        const [baseYear, baseMonthNum] = baseMonth.split('-').map(Number);
+        const [targetYear, targetMonthNum] = targetMonth.split('-').map(Number);
+
+        if (baseYear === targetYear) {
+          return targetMonthNum === baseMonthNum + 1;
+        } else if (targetYear === baseYear + 1) {
+          return baseMonthNum === 12 && targetMonthNum === 1;
+        }
+        return false;
+      };
+
+      // Current month start
+      if (revenueDateMonth === targetMonth) {
+        const amount = dailyRate * remainingDaysInRevenueMonth;
+        total += amount;
+        details.push({
+          type: 'Current Month Launch',
+          amount,
+          source: `$${revenue.toLocaleString()} ÷ ${campaignDuration} days = $${dailyRate.toFixed(2)}/day × ${remainingDaysInRevenueMonth} days from ${revenueDate.getMonth() + 1}/${revenueDate.getDate()}`
+        });
+      }
+      // Carryover from previous month
+      else if (isNextMonth(revenueDateMonth, targetMonth)) {
+        const targetDate = new Date(targetMonth + '-01');
+        const targetMonthDays = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0).getDate();
+
+        // Calculate remaining campaign days after the launch month
+        const remainingCampaignDays = campaignDuration - remainingDaysInRevenueMonth;
+        const daysToApplyInTargetMonth = Math.min(targetMonthDays, remainingCampaignDays);
+        const amount = dailyRate * daysToApplyInTargetMonth;
+
+        if (amount > 0) {
+          total += amount;
+          details.push({
+            type: 'Carryover',
+            amount,
+            source: `$${dailyRate.toFixed(2)}/day × ${daysToApplyInTargetMonth} days (remaining from ${campaignDuration}-day campaign started ${revenueDate.getMonth() + 1}/${revenueDate.getDate()})`
+          });
+        }
+      }
+    });
+
+    const breakdown = details.length > 0
+      ? details.map(d => `${d.type}: $${d.amount.toLocaleString()} (${d.source})`).join(' + ')
+      : 'No forecast data';
+
+    return { breakdown, total, details };
+  };
+
+  // Calculate combined breakdown for all individual IO numbers
+  const combinedCalculationBreakdown = individualIONumbers.map(ioNum => {
+    const breakdown = getSalesforceCalculationBreakdown(ioNum, currentMonth);
+    return {
+      ioNumber: ioNum,
+      ...breakdown
+    };
+  }).filter(b => b.details.length > 0);
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg max-w-4xl w-full max-h-[80vh] overflow-hidden">
@@ -229,6 +311,64 @@ const IODetailsModal: React.FC<IODetailsModalProps> = ({
               )}
             </CardContent>
           </Card>
+
+          {/* Salesforce Calculation Breakdown */}
+          {combinedCalculationBreakdown.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Calculator className="h-5 w-5" />
+                  Current Month Forecast Calculation
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {combinedCalculationBreakdown.map((ioBreakdown, ioIndex) => (
+                    <div key={ioIndex}>
+                      {combinedCalculationBreakdown.length > 1 && (
+                        <h5 className="font-medium text-gray-800 mb-2">IO {ioBreakdown.ioNumber}:</h5>
+                      )}
+                      <div className="space-y-2">
+                        {ioBreakdown.details.map((detail, index) => (
+                          <div
+                            key={index}
+                            className="p-3 bg-purple-50 border border-purple-200 rounded-lg"
+                          >
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <p className="font-medium text-sm text-purple-900">
+                                  {detail.type}
+                                </p>
+                                <p className="text-xs text-purple-700 mt-1">
+                                  {detail.source}
+                                </p>
+                              </div>
+                              <p className="font-semibold text-sm text-purple-700 whitespace-nowrap">
+                                ${detail.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {combinedCalculationBreakdown.length > 1 && ioIndex < combinedCalculationBreakdown.length - 1 && (
+                        <div className="border-b border-gray-200 mt-3"></div>
+                      )}
+                    </div>
+                  ))}
+
+                  {/* Total for all IOs */}
+                  <div className="mt-4 pt-3 border-t border-purple-200">
+                    <div className="flex justify-between items-center p-3 bg-purple-100 border border-purple-300 rounded-lg">
+                      <p className="font-semibold text-sm text-purple-800">Total Current Month Forecast:</p>
+                      <p className="font-bold text-base text-purple-700">
+                        ${combinedCalculationBreakdown.reduce((sum, io) => sum + io.total, 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Summary */}
           <div className="pt-4 border-t">

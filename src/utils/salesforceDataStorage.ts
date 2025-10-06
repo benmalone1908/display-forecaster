@@ -53,6 +53,7 @@ export const salesforceCsvRowToDbFormat = (
     monthly_revenue: monthlyRevenue,
     month: month,
     mjaa_filename: csvRow['MJAA Filename'] ? String(csvRow['MJAA Filename']).trim() : null,
+    account_name: csvRow['Account Name: Account Name'] ? String(csvRow['Account Name: Account Name']).trim() : null,
     uploaded_at: uploadTimestamp
   };
 };
@@ -120,6 +121,10 @@ export const saveSalesforceData = async (csvData: SalesforceCSVRow[]): Promise<{
           }
         } else if (record.mjaa_filename && !existing.mjaa_filename) {
           existing.mjaa_filename = record.mjaa_filename;
+        }
+        // Keep the account name (should be consistent for the same MJAA number)
+        if (record.account_name && !existing.account_name) {
+          existing.account_name = record.account_name;
         }
       } else {
         monthlyAggregation.set(key, { ...record });
@@ -317,7 +322,7 @@ export const hasSalesforceData = async (): Promise<boolean> => {
 };
 
 /**
- * Group Salesforce data by month and IO number
+ * Group Salesforce data by month and IO number (original logic - kept for backward compatibility)
  */
 export const groupSalesforceByMonthAndIO = (salesforceData: any[]): Record<string, Record<string, number>> => {
   const grouped: Record<string, Record<string, number>> = {};
@@ -339,4 +344,82 @@ export const groupSalesforceByMonthAndIO = (salesforceData: any[]): Record<strin
   });
 
   return grouped;
+};
+
+/**
+ * Calculate prorated Salesforce forecasts based on campaign launch dates
+ */
+export const calculateProratedSalesforceForecasts = (
+  salesforceData: any[],
+  targetMonth: string // Format: "2024-09"
+): Record<string, number> => {
+  const forecasts: Record<string, number> = {};
+
+  // Group all records by IO number first
+  const ioRecords = salesforceData.reduce((acc, row) => {
+    const ioNumber = row.mjaa_number;
+    if (!acc[ioNumber]) {
+      acc[ioNumber] = [];
+    }
+    acc[ioNumber].push(row);
+    return acc;
+  }, {} as Record<string, any[]>);
+
+  // Process each IO's records
+  Object.entries(ioRecords).forEach(([ioNumber, records]) => {
+    let totalForecast = 0;
+
+    records.forEach((record: any) => {
+      const revenue = Number(record.monthly_revenue) || 0;
+      const revenueDate = new Date(record.revenue_date);
+
+      // Assume campaign is 30 days total (standard duration)
+      const campaignDuration = 30;
+      const dailyRate = revenue / campaignDuration;
+
+      const revenueDateMonth = `${revenueDate.getFullYear()}-${String(revenueDate.getMonth() + 1).padStart(2, '0')}`;
+      const daysInRevenueMonth = new Date(revenueDate.getFullYear(), revenueDate.getMonth() + 1, 0).getDate();
+      const remainingDaysInRevenueMonth = daysInRevenueMonth - revenueDate.getDate() + 1; // +1 to include launch day
+
+      // If target month is the same as revenue month, calculate remaining days
+      if (revenueDateMonth === targetMonth) {
+        const targetMonthDays = new Date(revenueDate.getFullYear(), revenueDate.getMonth() + 1, 0).getDate();
+        const remainingDays = targetMonthDays - revenueDate.getDate() + 1;
+        totalForecast += dailyRate * remainingDays;
+      }
+      // If target month is the month after revenue month, calculate carryover
+      else if (isNextMonth(revenueDateMonth, targetMonth)) {
+        const targetDate = new Date(targetMonth + '-01');
+        const targetMonthDays = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0).getDate();
+
+        // Calculate remaining campaign days after the launch month
+        const remainingCampaignDays = campaignDuration - remainingDaysInRevenueMonth;
+        const daysToApplyInTargetMonth = Math.min(targetMonthDays, remainingCampaignDays);
+        totalForecast += dailyRate * daysToApplyInTargetMonth;
+      }
+    });
+
+    if (totalForecast > 0) {
+      forecasts[ioNumber] = totalForecast;
+    }
+  });
+
+  return forecasts;
+};
+
+/**
+ * Helper function to check if targetMonth is the next month after baseMonth
+ */
+const isNextMonth = (baseMonth: string, targetMonth: string): boolean => {
+  const [baseYear, baseMonthNum] = baseMonth.split('-').map(Number);
+  const [targetYear, targetMonthNum] = targetMonth.split('-').map(Number);
+
+  // Handle year rollover
+  if (baseYear === targetYear) {
+    return targetMonthNum === baseMonthNum + 1;
+  } else if (targetYear === baseYear + 1) {
+    return baseMonthNum === 12 && targetMonthNum === 1;
+  }
+
+  return false;
 };

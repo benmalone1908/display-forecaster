@@ -17,6 +17,7 @@ export interface Database {
           monthly_revenue: number
           month: string
           mjaa_filename: string | null
+          account_name: string | null
           uploaded_at: string
           created_at: string
           updated_at: string
@@ -28,6 +29,7 @@ export interface Database {
           monthly_revenue: number
           month: string
           mjaa_filename?: string | null
+          account_name?: string | null
           uploaded_at: string
           created_at?: string
           updated_at?: string
@@ -39,6 +41,7 @@ export interface Database {
           monthly_revenue?: number
           month?: string
           mjaa_filename?: string | null
+          account_name?: string | null
           uploaded_at?: string
           created_at?: string
           updated_at?: string
@@ -142,7 +145,8 @@ export interface SalesforceCSVRow {
   'Revenue Date': string
   'Product Category': string
   'MJAA Filename'?: string
-  // Other columns exist but we only need these five
+  'Account Name: Account Name'?: string
+  // Other columns exist but we only need these six
 }
 
 // Interface matching Campaign CSV data structure
@@ -211,6 +215,7 @@ CREATE TABLE IF NOT EXISTS salesforce_revenue (
   monthly_revenue NUMERIC(12,2) NOT NULL DEFAULT 0,
   month TEXT NOT NULL,
   mjaa_filename TEXT,
+  account_name TEXT,
   uploaded_at TIMESTAMPTZ NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()

@@ -55,17 +55,23 @@ export function calculateMTDMetrics(
   // Filter data for current month and agency type
   const filteredData = data.filter(row => {
     if (!row.DATE || row.DATE === 'Totals') return false;
-    
+
     const rowDate = parseDateString(row.DATE);
     if (!rowDate) return false;
-    
+
     // Check if date is in current month
     if (rowDate.getMonth() !== currentMonth || rowDate.getFullYear() !== currentYear) {
       return false;
     }
-    
+
+    // Normalize dates to start of day for comparison to avoid time-of-day issues
+    const rowDateNormalized = new Date(rowDate);
+    rowDateNormalized.setHours(0, 0, 0, 0);
+    const currentDateNormalized = new Date(currentDate);
+    currentDateNormalized.setHours(0, 0, 0, 0);
+
     // Check if date is not in future
-    if (rowDate > currentDate) return false;
+    if (rowDateNormalized > currentDateNormalized) return false;
     
     // Check agency type
     const campaignName = row["CAMPAIGN ORDER NAME"] || "";

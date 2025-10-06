@@ -212,7 +212,17 @@ export const findIOMatches = (
   });
 
   const unmatchedSalesforce = salesforceIOs.filter(io => !matchedSalesforceIOs.has(io));
-  const unmatchedDashboard = allDashboardIOs.filter(io => !matchedDashboardIOs.has(io));
+
+  // Create a set of all individual IOs that are part of matched display formats
+  const iosInMatchedCampaigns = new Set<string>();
+  matches.forEach(match => {
+    match.ioNumbers.forEach(io => iosInMatchedCampaigns.add(io));
+  });
+
+  // Only include IOs in unmatchedDashboard if they're not part of any matched campaign
+  const unmatchedDashboard = allDashboardIOs.filter(io =>
+    !matchedDashboardIOs.has(io) && !iosInMatchedCampaigns.has(io)
+  );
 
   return {
     matches: matches.sort((a, b) => a.displayFormat.localeCompare(b.displayFormat)),
