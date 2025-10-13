@@ -1,6 +1,5 @@
-import { supabase, canUseDatabase, ensureDatabaseReady } from '../lib/supabase'
+import { supabase, canUseDatabase } from '../lib/supabase'
 import type { CampaignCSVRow, CampaignDataInsert, CampaignDataRow } from '../types/database'
-import { ensureDatabaseSetup, getDatabaseSetupInstructions } from './databaseSetup'
 
 // Generate a session ID for this user session
 let userSessionId: string | null = null
@@ -116,10 +115,23 @@ export const csvRowToDbFormat = (
   }
 }
 
+// Helper to convert ISO date (YYYY-MM-DD) to US format (M/D/YYYY)
+const convertISOToUSDate = (isoDate: string): string => {
+  // If already in US format, return as is
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(isoDate)) {
+    return isoDate;
+  }
+
+  // Parse ISO format (YYYY-MM-DD)
+  const [year, month, day] = isoDate.split('-');
+  // Return as M/D/YYYY (without leading zeros)
+  return `${parseInt(month)}/${parseInt(day)}/${year}`;
+};
+
 // Convert database row to CSV format for application use
 export const dbRowToCsvFormat = (dbRow: CampaignDataRow): CampaignCSVRow => {
   return {
-    DATE: dbRow.date,
+    DATE: convertISOToUSDate(dbRow.date),
     'CAMPAIGN ORDER NAME': dbRow.campaign_order_name,
     IMPRESSIONS: dbRow.impressions,
     CLICKS: dbRow.clicks,
