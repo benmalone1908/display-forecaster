@@ -219,6 +219,25 @@ export const saveCampaignData = async (
     const uploadDates = [...new Set(dbRows.map(row => row.date))];
     console.log(`🔄 Upserting data for ${uploadDates.length} unique dates:`, uploadDates.slice(0, 5), uploadDates.length > 5 ? '...' : '');
 
+    // 🔍 ENHANCED LOGGING: Check spend values for October dates
+    const octoberRows = dbRows.filter(row => row.date >= '2025-10-01' && row.date <= '2025-10-31');
+    if (octoberRows.length > 0) {
+      console.log(`🎯 OCTOBER DATA CHECK: Found ${octoberRows.length} October rows`);
+      const spendStats = octoberRows.reduce((acc, row) => {
+        acc.total += row.spend || 0;
+        acc.zero += (row.spend === 0 || row.spend === null) ? 1 : 0;
+        return acc;
+      }, { total: 0, zero: 0 });
+      console.log(`   Total October spend to save: $${spendStats.total.toFixed(2)}`);
+      console.log(`   Rows with $0 spend: ${spendStats.zero} of ${octoberRows.length}`);
+      console.table(octoberRows.slice(0, 5).map(r => ({
+        date: r.date,
+        campaign: r.campaign_order_name.substring(0, 50),
+        spend: r.spend,
+        impressions: r.impressions
+      })));
+    }
+
     // Delete existing data only for the dates we're uploading
     let deletedCount = 0;
     if (uploadDates.length > 0) {
@@ -290,6 +309,11 @@ export const saveCampaignData = async (
 
         if (batchError) {
           console.error(`❌ Batch ${batchNum} error:`, batchError)
+          console.error(`   Error code: ${batchError.code}`);
+          console.error(`   Error message: ${batchError.message}`);
+          console.error(`   Error details:`, batchError.details);
+          console.error(`   Error hint:`, batchError.hint);
+          console.error(`   First row in failed batch:`, sanitizedBatch[0]);
           errors.push(batchError)
         } else {
           const batchCount = batchData?.length || 0
@@ -311,11 +335,31 @@ export const saveCampaignData = async (
     }
 
     console.log(`✅ Successfully upserted ${successCount} rows to Supabase (deleted ${deletedCount} old, inserted ${successCount} new)`)
-    
-    return { 
-      success: true, 
-      message: `Successfully upserted ${successCount} campaign records (${deletedCount} replaced, ${successCount - deletedCount} new)`, 
-      savedCount: successCount 
+
+    // 🔍 VERIFY: Check if October data was actually saved
+    if (octoberRows.length > 0) {
+      console.log(`🔍 VERIFICATION: Checking if October data was saved...`);
+      const { data: verifyData, error: verifyError } = await supabase
+        .from('campaign_data')
+        .select('date, spend, impressions')
+        .gte('date', '2025-10-01')
+        .lte('date', '2025-10-31')
+        .limit(5);
+
+      if (verifyError) {
+        console.error(`⚠️ Could not verify October save:`, verifyError);
+      } else if (verifyData && verifyData.length > 0) {
+        console.log(`✅ VERIFIED: Found ${verifyData.length} October rows in database`);
+        console.table(verifyData);
+      } else {
+        console.error(`❌ VERIFICATION FAILED: No October data found after save!`);
+      }
+    }
+
+    return {
+      success: true,
+      message: `Successfully upserted ${successCount} campaign records (${deletedCount} replaced, ${successCount - deletedCount} new)`,
+      savedCount: successCount
     }
 
   } catch (error) {

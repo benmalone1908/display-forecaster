@@ -130,7 +130,9 @@ const FileUpload = ({ onDataLoaded, onPacingDataLoaded, onContractTermsLoaded, o
                   }
                 } 
                 else if (["IMPRESSIONS", "CLICKS", "TRANSACTIONS", "REVENUE", "SPEND"].includes(header.toUpperCase())) {
-                  processed[header] = Number(value) || 0;
+                  // Strip currency symbols, commas, and whitespace before parsing
+                  const cleanValue = String(value).replace(/[$,\s]/g, '');
+                  processed[header] = Number(cleanValue) || 0;
                 } 
                 else {
                   processed[header] = String(value || "");
