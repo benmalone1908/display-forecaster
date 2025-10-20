@@ -960,7 +960,9 @@ const Index = () => {
         ["IMPRESSIONS", "CLICKS", "TRANSACTIONS", "REVENUE", "SPEND"].forEach(field => {
           const normalizedField = Object.keys(newRow).find(key => key.toUpperCase() === field);
           if (normalizedField) {
-            newRow[normalizedField] = Number(newRow[normalizedField]) || 0;
+            // Strip currency symbols, commas, and whitespace before parsing (handles formatted values like "$1,234.56")
+            const cleanValue = String(newRow[normalizedField]).replace(/[$,\s]/g, '');
+            newRow[normalizedField] = Number(cleanValue) || 0;
           }
         });
         
