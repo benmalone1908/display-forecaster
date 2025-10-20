@@ -77,7 +77,9 @@ export const csvRowToDbFormat = (
   // Sanitize numeric fields with proper validation
   const parseNumericField = (value: any, fieldName: string): number => {
     if (value === null || value === undefined || value === '') return 0;
-    const parsed = Number(value);
+    // Strip currency symbols, commas, and whitespace before parsing (handles formatted values like "$1,234.56")
+    const cleanValue = String(value).replace(/[$,\s]/g, '');
+    const parsed = Number(cleanValue);
     if (isNaN(parsed)) {
       console.warn(`Invalid ${fieldName} value: ${value}, defaulting to 0`);
       return 0;
@@ -87,7 +89,9 @@ export const csvRowToDbFormat = (
 
   const parseOptionalNumericField = (value: any, fieldName: string): number | null => {
     if (value === null || value === undefined || value === '') return null;
-    const parsed = Number(value);
+    // Strip currency symbols, commas, and whitespace before parsing (handles formatted values like "$1,234.56")
+    const cleanValue = String(value).replace(/[$,\s]/g, '');
+    const parsed = Number(cleanValue);
     if (isNaN(parsed)) {
       console.warn(`Invalid ${fieldName} value: ${value}, defaulting to null`);
       return null;
