@@ -1,5 +1,6 @@
 import { parseDateString } from "@/lib/utils";
 import { applySpendCorrection } from "./orangellowSpendCorrection";
+import { applyManualCpmCorrection } from "./manualCpmCalculations";
 
 export interface DailyForecastData {
   date: string;
@@ -48,10 +49,6 @@ export function calculateMTDMetrics(
   const currentMonth = currentDate.getMonth();
   const currentYear = currentDate.getFullYear();
 
-  console.log(`🔍 MTD Calculation for ${agencyType}:`);
-  console.log('Current date:', currentDate.toDateString());
-  console.log('Looking for month:', currentMonth, 'year:', currentYear);
-  
   // Filter data for current month and agency type
   const filteredData = data.filter(row => {
     if (!row.DATE || row.DATE === 'Totals') return false;
@@ -85,8 +82,13 @@ export function calculateMTDMetrics(
   const dailyData: Record<string, { impressions: number; spend: number; date: string }> = {};
   
   filteredData.forEach(row => {
-    // Apply spend correction to each row before aggregating
-    const correctedRow = applySpendCorrection(row);
+    // Apply spend corrections to each row before aggregating
+    // First apply Orangellow corrections (SM/OG campaigns: $15 CPM → $7 CPM), then manual CPM corrections
+    let correctedRow = applySpendCorrection(row);
+    correctedRow = applyManualCpmCorrection(correctedRow);
+    
+    const impressions = Number(correctedRow.IMPRESSIONS) || 0;
+    const spend = Number(correctedRow.SPEND) || 0; // Use spend directly from database (after Orangellow/manual corrections)
     
     const dateKey = correctedRow.DATE;
     if (!dailyData[dateKey]) {
@@ -97,8 +99,8 @@ export function calculateMTDMetrics(
       };
     }
     
-    dailyData[dateKey].impressions += Number(correctedRow.IMPRESSIONS) || 0;
-    dailyData[dateKey].spend += Number(correctedRow.SPEND) || 0;
+    dailyData[dateKey].impressions += impressions;
+    dailyData[dateKey].spend += spend;
   });
   
   const dailyDataArray = Object.values(dailyData).sort((a, b) => {

@@ -134,6 +134,8 @@ const convertISOToUSDate = (isoDate: string): string => {
 
 // Convert database row to CSV format for application use
 export const dbRowToCsvFormat = (dbRow: CampaignDataRow): CampaignCSVRow => {
+  // Directly use database values - no transformation
+  // The spend value comes directly from what's stored in Supabase
   return {
     DATE: convertISOToUSDate(dbRow.date),
     'CAMPAIGN ORDER NAME': dbRow.campaign_order_name,

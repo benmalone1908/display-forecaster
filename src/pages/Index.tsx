@@ -975,7 +975,6 @@ const Index = () => {
       // Log Orangellow spend correction summary
       const orangellowCorrectionSummary = getSpendCorrectionSummary(orangellowCorrectedData);
       if (orangellowCorrectionSummary.correctedRows > 0) {
-        console.log(`Orangellow spend corrections applied:`, orangellowCorrectionSummary);
         toast.success(`Applied spend corrections to ${orangellowCorrectionSummary.correctedRows} Orangellow campaigns using $7 CPM`);
       }
 

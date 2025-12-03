@@ -14,6 +14,8 @@ import {
   ForecastSummary,
   getAgencyType 
 } from "@/utils/forecastCalculations";
+import { applySpendCorrection } from "@/utils/orangellowSpendCorrection";
+import { applyManualCpmCorrection } from "@/utils/manualCpmCalculations";
 import { formatNumber, parseDateString } from "@/lib/utils";
 
 interface ForecastTabProps {
@@ -104,7 +106,12 @@ const ForecastTab = ({ data }: ForecastTabProps) => {
       
       if (agencyType !== selectedAgencyType) return;
 
-      const spend = Number(row.SPEND) || 0;
+      // Apply spend corrections (Orangellow $15→$7 CPM and manual CPM corrections only)
+      let correctedRow = applySpendCorrection(row);
+      correctedRow = applyManualCpmCorrection(correctedRow);
+      
+      // Use spend directly from database (after Orangellow/manual corrections)
+      const spend = Number(correctedRow.SPEND) || 0;
 
       if (!campaignGroups[campaignName]) {
         campaignGroups[campaignName] = {
